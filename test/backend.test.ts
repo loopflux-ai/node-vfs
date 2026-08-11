@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FilesystemBackend } from '../packages/node-vfs/src/backend/filesystem'
 import { InMemoryBackend } from '../packages/node-vfs/src/backend/memory'
+import { codePageToLabel, decodeExecOutput } from '../packages/node-vfs/src/utils/encoding'
 import { readAll } from './helpers'
 import { cleanupTempDir, createTempDir } from './setup'
 
@@ -455,6 +456,90 @@ describe('filesystemBackend', () => {
         maxOutputBytes: 1024 * 1024,
         signal: ac.signal,
       })).rejects.toMatchObject({ code: 'ABORTED' })
+    })
+
+    it.skipIf(process.platform !== 'win32')('should decode GBK output from cmd on Windows (no mojibake)', async () => {
+      const result = await backend.execute({
+        command: 'cmd',
+        args: ['/c', 'dir'],
+        cwd: '/',
+        env: {},
+        timeoutMs: 5000,
+        maxOutputBytes: 1024 * 1024,
+        signal: new AbortController().signal,
+      })
+      // On zh-CN, cmd emits GBK — decodeExecOutput must recover it. A U+FFFD
+      // in the output means UTF-8 mis-decode of legacy bytes.
+      expect(result.stdout).not.toContain('\uFFFD')
+    })
+
+    it('should honour an explicit outputEncoding for decoding', async () => {
+      // '中文' in GBK. Run node to emit raw GBK bytes via stdout, then verify
+      // the explicit outputEncoding label controls decoding.
+      const js = `const b = Buffer.from([0xD6, 0xD0, 0xCE, 0xC4]); process.stdout.write(b)`
+      const result = await backend.execute({
+        command: 'node',
+        args: ['-e', js],
+        cwd: '/',
+        env: {},
+        timeoutMs: 5000,
+        maxOutputBytes: 1024 * 1024,
+        signal: new AbortController().signal,
+        outputEncoding: 'gbk',
+      })
+      expect(result.stdout).toBe('中文')
+    })
+  })
+
+  describe('decodeExecOutput', () => {
+    it('should pass through clean UTF-8 including Chinese', () => {
+      expect(decodeExecOutput(new TextEncoder().encode('中文 ok'))).toBe('中文 ok')
+    })
+
+    it('should decode Windows GBK bytes as Chinese', () => {
+      // '中文' in GBK/cp936: D6 D0 CE C4 — pass 'gbk' explicitly so the test
+      // does not depend on the runtime locale (the auto-detected code page).
+      expect(decodeExecOutput(new Uint8Array([0xD6, 0xD0, 0xCE, 0xC4]), 'gbk')).toBe('中文')
+    })
+
+    it('should handle empty / undefined input', () => {
+      expect(decodeExecOutput(undefined)).toBe('')
+      expect(decodeExecOutput(null)).toBe('')
+      expect(decodeExecOutput(new Uint8Array(0))).toBe('')
+    })
+
+    it('should pass through string input unchanged', () => {
+      expect(decodeExecOutput('hello')).toBe('hello')
+    })
+
+    it('should strip a UTF-8 BOM', () => {
+      expect(decodeExecOutput(new Uint8Array([0xEF, 0xBB, 0xBF, 0x61]))).toBe('a')
+    })
+
+    it('should drop a truncated UTF-8 tail instead of leaking U+FFFD', () => {
+      // '中文' UTF-8: E4 B8 AD E6 96 87 — drop the final byte so the tail
+      // (E6 96) is an incomplete sequence. The valid body must be returned
+      // without a U+FFFD replacement character for the cut tail.
+      const out = decodeExecOutput(new Uint8Array([0xE4, 0xB8, 0xAD, 0xE6, 0x96]))
+      expect(out).toBe('中')
+      expect(out).not.toContain('\uFFFD')
+    })
+  })
+
+  describe('codePageToLabel', () => {
+    it('should map common Windows ANSI code pages', () => {
+      expect(codePageToLabel('936')).toBe('gbk')
+      expect(codePageToLabel('950')).toBe('big5')
+      expect(codePageToLabel('932')).toBe('shift_jis')
+      expect(codePageToLabel('949')).toBe('euc-kr')
+      expect(codePageToLabel('1251')).toBe('windows-1251')
+      expect(codePageToLabel('1252')).toBe('windows-1252')
+      expect(codePageToLabel('874')).toBe('windows-874')
+    })
+
+    it('should return undefined for unsupported code pages', () => {
+      expect(codePageToLabel('999')).toBeUndefined()
+      expect(codePageToLabel('65001')).toBeUndefined()
     })
   })
 

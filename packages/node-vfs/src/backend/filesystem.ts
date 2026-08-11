@@ -23,6 +23,7 @@ import { execa } from 'execa'
 import fastGlob from 'fast-glob'
 import { dirname, join, normalize, resolve as pathResolve } from 'pathe'
 import { hasTraversalSegments, INTERNAL_GLOB_IGNORE, isHostAbsolutePath, isInternalFileName } from '../path.ts'
+import { decodeExecOutput } from '../utils/encoding.ts'
 import { buildSafeEnv } from '../utils/env.ts'
 import { withMutex } from '../utils/mutex.ts'
 
@@ -372,7 +373,9 @@ export class FilesystemBackend implements StorageBackend {
         maxBuffer: config.maxOutputBytes,
         reject: false,
         cancelSignal: config.signal,
-        encoding: 'utf8',
+        // Capture raw bytes so Windows legacy-encoding (GBK) output can be
+        // decoded correctly — 'utf8' here would produce mojibake for zh-CN.
+        encoding: 'buffer',
       })
 
       // Cancellation must surface as ABORTED, not as a normal failed result
@@ -389,10 +392,23 @@ export class FilesystemBackend implements StorageBackend {
         throw new FilesystemBackendError('COMMAND_NOT_FOUND', `Command not found: ${config.command}`)
       }
 
-      const stdout = result.stdout ?? ''
-      const stderr = result.stderr ?? ''
-      const stdoutBytes = Buffer.byteLength(stdout, 'utf8')
-      const stderrBytes = Buffer.byteLength(stderr, 'utf8')
+      const rawStdout = result.stdout as string | Uint8Array | undefined
+      const rawStderr = result.stderr as string | Uint8Array | undefined
+      // Explicit outputEncoding wins; otherwise decodeExecOutput falls back
+      // to the system ANSI code page (Windows registry ACP) — authoritative
+      // for pipe-spawned subprocesses and covering all languages. Strict
+      // UTF-8 is always tried first, so modern tools stay untouched.
+      const stdout = decodeExecOutput(rawStdout, config.outputEncoding)
+      const stderr = decodeExecOutput(rawStderr, config.outputEncoding)
+      // Byte lengths come from the raw buffers — the decoded string's UTF-8
+      // size differs from the on-the-wire GBK size, so re-encoding would skew
+      // the truncation check.
+      const stdoutBytes = typeof rawStdout === 'string'
+        ? Buffer.byteLength(rawStdout, 'utf8')
+        : (rawStdout?.byteLength ?? 0)
+      const stderrBytes = typeof rawStderr === 'string'
+        ? Buffer.byteLength(rawStderr, 'utf8')
+        : (rawStderr?.byteLength ?? 0)
 
       // execa with reject:false silently caps output at maxBuffer. Detect
       // truncation by checking whether stdout+stderr hit the limit so the

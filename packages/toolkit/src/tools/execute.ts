@@ -1,24 +1,36 @@
 import type { VFSToolDefinition } from '../types'
 import { z } from 'zod'
-import { DEFAULT_MAX_OUTPUT_CHARS, TRUNCATION_MARKER, truncationNote } from '../constants'
+import { DEFAULT_MAX_OUTPUT_CHARS, PATH_HINT, TRUNCATION_MARKER, truncationNote } from '../constants'
 import { formatToolError } from '../error'
 import { buildEnvironmentPrompt, getSystemContext } from '../system'
 
-const BASE_DESCRIPTION = `Run a command on the host. Use only for operations the file tools cannot do (e.g. running scripts or builds).
-- cwd defaults to "/" (the sandbox root); relative cwd is resolved under rootDir; host absolute cwd (e.g. "C:/...") may be rejected depending on backend configuration.
-- stdout is returned; on non-zero exit, the exit code and stderr are appended.
-- env vars are passed through (dangerous ones filtered).
+const BASE_DESCRIPTION = `Run a command on the host. Use only when the file tools cannot do the job (scripts, builds, system queries).
+
+MUST:
+- SPLIT THE INVOCATION: "command" is the executable name only; ALL arguments go into "args". The VFS spawns directly (no shell) — a full command line fails.
+  ✓ { "command": "node", "args": ["-e", "console.log(1)"] }
+  ✗ { "command": "node -e console.log(1)" }
+- ENCODING: modern tools (node, git) emit UTF-8; Windows legacy tools (cmd, powershell) emit ANSI (e.g. GBK on zh-CN) — decoded automatically (UTF-8 first). If still garbled, use node (if allowed) or set "outputEncoding".
+- ${PATH_HINT}
+- "cwd" defaults to "/" (sandbox root); relative cwd resolves under rootDir.
+
+Output:
+- Returns stdout (truncated over ~50k chars). Non-zero exit appends "[Command exited with code N]" and any stderr. On Windows, exit 1 with no output usually means the executable was not found — check stderr.
+- Empty output is reported explicitly — don't assume success.
+
+Safety:
 - Destructive — use with care.
-- NOTE: execute restrictions (deny/allow lists) are deployment policy — this tool reports them via errors. File operations should still go through the VFS file tools (read_file / write_file / edit_file / delete_file / mkdir).
-- If you intend to modify files, declare the affected virtual paths via "affectedPaths" so the VFS policy can validate them.`
+- Default-deny: unlisted commands are rejected — rework the command or report the failure, don't retry.
+- If writing files, declare them in "affectedPaths".`
 
 const EXECUTE_SCHEMA = z.object({
-  command: z.string().describe('Command to run (e.g., "node script.js").'),
-  args: z.array(z.string()).optional().describe('Command arguments.'),
-  cwd: z.string().default('/').describe('Working directory (default "/" = sandbox root).'),
+  command: z.string().describe('Executable name only (e.g. "node", "git", "powershell"). Do NOT put arguments here — put them in "args".'),
+  args: z.array(z.string()).optional().describe('Arguments passed to the executable, one per array element (e.g. ["-c", "console.log(1)"] or ["/c", "dir"]).'),
+  cwd: z.string().default('/').describe('Working directory — "/" is the sandbox root; relative paths resolve under rootDir.'),
   env: z.record(z.string(), z.string()).optional().describe('Extra env vars (dangerous ones filtered).'),
   timeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds.'),
   maxOutputBytes: z.number().int().positive().optional().describe('Max output bytes to capture.'),
+  outputEncoding: z.string().optional().describe('Rarely needed — omit it. Explicit TextDecoder label (e.g. "gbk") when output is garbled; otherwise decoding tries UTF-8 first, then the system ANSI code page.'),
   scope: z.enum(['readonly', 'readwrite']).optional().describe('Declared access scope: "readonly" (default, no write intent) or "readwrite" (may modify files).'),
   affectedPaths: z.array(z.string()).optional().describe('Virtual paths this command may modify. Validated against the VFS policy — declare them honestly when writing files.'),
 })
@@ -31,12 +43,24 @@ export function createExecuteTool(): VFSToolDefinition {
     description,
     schema: EXECUTE_SCHEMA,
     async execute(input, ctx) {
+      // Runtime guard — "command" must be an executable name, not a full
+      // command line. This is the single choke point across all adapters:
+      // schema-level constraints are stripped during JSON-schema
+      // serialization and would be invisible to the LLM.
+      if (/\s/.test(input.command) && !/^"[^"]+"$/.test(input.command.trim())) {
+        throw new Error(
+          'execute failed: "command" must be the executable name only (e.g. "node"), '
+          + 'not a full command line. Move all arguments to "args" '
+          + '(e.g. { command: "node", args: ["script.js"] }).',
+        )
+      }
       const result = await ctx.vfs.execute(input.command, {
         args: input.args,
         cwd: input.cwd,
         env: input.env,
         timeoutMs: input.timeoutMs,
         maxOutputBytes: input.maxOutputBytes,
+        outputEncoding: input.outputEncoding,
         scope: input.scope,
         affectedPaths: input.affectedPaths,
       })
@@ -46,6 +70,9 @@ export function createExecuteTool(): VFSToolDefinition {
 
       let stdout = result.data.stdout
       if (typeof stdout !== 'string') {
+        // Defensive only — backends are expected to return decoded strings.
+        // Encoding detection is the backend's responsibility (it knows the
+        // byte source's code page); do not duplicate it here.
         stdout = new TextDecoder().decode(stdout)
       }
 
@@ -64,6 +91,14 @@ export function createExecuteTool(): VFSToolDefinition {
         if (result.data.stderr) {
           output += `\nStderr: ${result.data.stderr}`
         }
+      }
+      else if (result.data.stderr) {
+        // exit 0 but produced diagnostics on stderr — don't silently drop them.
+        output += `\nStderr: ${result.data.stderr}`
+      }
+
+      if (!output.trim()) {
+        output = '[Command produced no output — the executable may not exist, or "command" was not an executable name. Use "command" for the program and "args" for its arguments.]'
       }
 
       return output

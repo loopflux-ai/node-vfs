@@ -131,6 +131,12 @@ export interface ExecuteConfig {
   timeoutMs: number
   maxOutputBytes: number
   signal: AbortSignal
+  /**
+   * Explicit output encoding (TextDecoder label, e.g. 'gbk'). When omitted,
+   * the backend auto-detects: strict UTF-8 first, then the system ANSI code
+   * page (Windows).
+   */
+  outputEncoding?: string
 }
 
 export interface ExecuteReceipt {
@@ -237,6 +243,8 @@ export interface ExecuteOp extends BaseOp {
   env?: Record<string, string>
   timeoutMs?: number
   maxOutputBytes?: number
+  /** Explicit output encoding (TextDecoder label, e.g. 'gbk'); auto-detected when omitted. */
+  outputEncoding?: string
   /**
    * Declared access scope (default readonly).
    * NOTE: this is a declarative/audit field, NOT an enforcement boundary —
@@ -394,6 +402,8 @@ export interface ExecuteCommandOpts {
   env?: Record<string, string>
   timeoutMs?: number
   maxOutputBytes?: number
+  /** Explicit output encoding (TextDecoder label, e.g. 'gbk'); auto-detected when omitted. */
+  outputEncoding?: string
   /** Declared access scope — audit field only, enforcement lives in the execute guard. */
   scope?: 'readonly' | 'readwrite'
   /** Declared affected virtual paths — honesty-based signal, validated against policy/validatePath. */

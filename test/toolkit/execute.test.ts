@@ -107,5 +107,24 @@ describe('executeTool', () => {
       })
       expect(out).toContain('ok')
     })
+
+    it('should reject a full command line stuffed into "command"', async () => {
+      await vfs.write_file('/echo.js', 'process.stdout.write("x")')
+      await expect(
+        toolkit.executeTool(executeTool, { command: 'node echo.js' }),
+      ).rejects.toThrow(/args/)
+    })
+
+    it('should surface stderr even when the exit code is 0', async () => {
+      await vfs.write_file('/warn.js', 'process.stderr.write("warn-msg")')
+      const out = await toolkit.executeTool(executeTool, { command: 'node', args: ['warn.js'] })
+      expect(out).toContain('Stderr: warn-msg')
+    })
+
+    it('should report a visible placeholder when a command produces no output', async () => {
+      await vfs.write_file('/silent.js', '')
+      const out = await toolkit.executeTool(executeTool, { command: 'node', args: ['silent.js'] })
+      expect(out).toContain('[Command produced no output')
+    })
   })
 })

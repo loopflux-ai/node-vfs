@@ -30,7 +30,6 @@ import type {
 } from '../types.ts'
 import { Buffer } from 'node:buffer'
 import { err, ERR, getBackendErrorCode, getBackendErrorDetail, getBackendErrorMeta } from '../errors.ts'
-import { buildSafeEnv } from '../utils/env.ts'
 import { estimateBinaryTokens, estimateTextTokens } from '../utils/tokens.ts'
 
 export type { ExecuteAllowItem, ExecuteAllowList }
@@ -132,7 +131,7 @@ export async function handleExecute(
   }
   const sandbox = backend as StorageBackend & { execute: (config: ExecuteConfig) => Promise<ExecuteReceipt> }
 
-  const env = buildSafeEnv(op.env)
+  const env = op.env ?? {}
   // Clamp per-op overrides to instance limits.
   const timeoutMs = Math.min(op.timeoutMs ?? ctx.limits.maxExecuteMs, ctx.limits.maxExecuteMs)
   const maxOutputBytes = Math.min(op.maxOutputBytes ?? ctx.limits.maxOutputBytes, ctx.limits.maxOutputBytes)
@@ -149,6 +148,7 @@ export async function handleExecute(
       timeoutMs,
       maxOutputBytes,
       signal: ctx.signal,
+      ...(op.outputEncoding ? { outputEncoding: op.outputEncoding } : {}),
     })
   }
   catch (e) {

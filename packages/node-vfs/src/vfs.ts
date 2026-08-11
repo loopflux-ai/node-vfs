@@ -181,6 +181,7 @@ function buildExecuteOp(command: string, opts: ExecuteCommandOpts = {}): Execute
     ...(opts.env ? { env: opts.env } : {}),
     ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
     ...(opts.maxOutputBytes !== undefined ? { maxOutputBytes: opts.maxOutputBytes } : {}),
+    ...(opts.outputEncoding ? { outputEncoding: opts.outputEncoding } : {}),
     ...(opts.scope ? { scope: opts.scope } : {}),
     ...(opts.affectedPaths ? { affectedPaths: opts.affectedPaths } : {}),
     ...(opts.signal ? { signal: opts.signal } : {}),
@@ -273,7 +274,16 @@ export function createVFS(config: VFSConfig) {
 
     resolvedDebugger?.debug(DEBUG_CATEGORY.OP, `${opWithId.kind}`, {
       ...('path' in opWithId ? { path: (opWithId as { path: string }).path } : {}),
-      ...(opWithId.kind === OP_KIND.EXECUTE ? { command: (opWithId as { command: string }).command, cwd: (opWithId as { cwd?: string }).cwd ?? '/' } : {}),
+      ...(opWithId.kind === OP_KIND.EXECUTE
+        ? {
+            command: (opWithId as { command: string }).command,
+            // Always emit args — null means the caller passed none, which is
+            // the distinguishing evidence for "full command line stuffed into
+            // command" vs "properly split command + args".
+            args: (opWithId as { args?: string[] }).args ?? null,
+            cwd: (opWithId as { cwd?: string }).cwd ?? '/',
+          }
+        : {}),
       opId: opWithId.id,
     })
 
