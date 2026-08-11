@@ -2,12 +2,15 @@
  * Execute handler — duck-types backend.execute.
  *
  * Security model (default-deny allow-list):
- * - execute is DISABLED by default. `createVFS({ execute: [...] })` enables it
- *   with an allow-list: each entry is a command name (basename match) or a
- *   RegExp matched against the command field.
- *   - `execute` not set / `[]`   → every execute op is rejected
- *   - `execute: ['node', 'git']` → only those commands (exact basename)
- *   - `execute: [/^git/, 'npm']` → regex + name entries mixed
+ * - execute is DISABLED by default. `createVFS({ execute: { allowCommands: [...] } })`
+ *   enables it with an allow-list: each entry is a command name (basename
+ *   match) or a RegExp matched against the command field.
+ *   - `execute` not set / `allowCommands: []` → every execute op is rejected
+ *   - `allowCommands: ['node', 'git']` → only those commands (exact basename)
+ *   - `allowCommands: [/^git/, 'npm']` → regex + name entries mixed
+ * - The subprocess env inherits the full host `process.env` by default;
+ *   `execute: { envBlocklist: [...] }` strips matching host vars before spawn
+ *   (exact names, case-insensitive, or RegExp patterns).
  *
  * Threat model: the VFS sandbox boundary is `virtualMode` × policy deny-list.
  * The file tools reach host paths when virtualMode is false. An allow-list
@@ -117,12 +120,12 @@ export async function handleExecute(
   }
   // Default-deny: execute is disabled unless the VFS config provides an
   // allow-list.
-  const guard = buildExecuteGuard(ctx.executeAllow)
+  const guard = buildExecuteGuard(ctx.executeConfig?.allowCommands)
   const check = guard(op.command)
   if (!check.allowed) {
     const suggestion = check.reason === 'allowList'
-      ? 'The command is not in the allow-list — add it to createVFS({ execute: [...] }) to permit it.'
-      : 'execute is disabled by default — enable it via createVFS({ execute: [...] }) with an allow-list (command names or regexes).'
+      ? 'The command is not in the allow-list — add it to createVFS({ execute: { allowCommands: [...] } }) to permit it.'
+      : 'execute is disabled by default — enable it via createVFS({ execute: { allowCommands: [...] } }) with an allow-list (command names or regexes).'
     return err(op.id, op.kind, ERR.PERMISSION_DENIED(`execute "${op.command}"`), {
       reason: check.reason,
       detail: check.detail,
@@ -145,6 +148,7 @@ export async function handleExecute(
       args: op.args,
       cwd,
       env,
+      ...(ctx.executeConfig?.envBlocklist ? { envBlocklist: ctx.executeConfig.envBlocklist } : {}),
       timeoutMs,
       maxOutputBytes,
       signal: ctx.signal,

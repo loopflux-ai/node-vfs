@@ -4,7 +4,7 @@
  * 2. Post-handler: filter denied entries from ls/glob/grep results.
  *
  * Execute command restrictions are NOT part of this middleware — they live in
- * `createVFS({ execute: [...] })` (default-deny allow-list). This middleware
+ * `createVFS({ execute: { allowCommands: [...] } })` (default-deny allow-list). This middleware
  * only validates an execute op's declared `affectedPaths` against `deny`.
  *
  * @example `createPolicyMiddleware({ deny: [/\/\./] })` — block all dotfiles.

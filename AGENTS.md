@@ -45,7 +45,7 @@ cache.ts      Built-in cache subsystem (LRU + reverse index, CQRS)
 backend/      StorageBackend interface + FilesystemBackend / InMemoryBackend implementations
 handlers/     9 pure handlers + dispatch table + kinds.ts (isQueryOp/isCommandOp)
 middleware/   compose (onion) + logging / policy / quota
-utils/        tokens, mutex, batch (p-limit), signal, env (safe env allowlist), debug
+utils/        tokens, mutex, batch (p-limit), signal, env (child env builder), debug
 ```
 
 ### toolkit (`packages/toolkit/src/tools/`)
@@ -65,7 +65,7 @@ Adding a new framework adapter = copy the existing pattern (`prefix` / `filter` 
 - **`OpRegistry` in `types.ts`**: adding an op requires syncing the dispatch table, `serialisedParams`/`entryPaths` in cache.ts, and the toolkit. `OpKind` is `keyof OpRegistry` — omissions fail at compile time.
 - **The CQRS split in `kinds.ts` drives cache behavior**: query ops (read_file/grep/ls/glob) are cached; command ops (write/edit/delete/mkdir/execute) invalidate the cache on success. New ops must be classified into one of the two.
 - **The `DEBUG_CATEGORY` constants in `utils/debug.ts` are the log-filtering contract surface** — callers must never hardcode the string literals.
-- **execute is default-deny**: it is only usable when `createVFS({ execute: [...] })` explicitly provides an allow-list (command names or regexes).
+- **execute is default-deny**: it is only usable when `createVFS({ execute: { allowCommands: [...] } })` explicitly provides an allow-list (command names or regexes).
 - **The sandbox boundary must not be bypassed**: no new code may circumvent `validatePath`, policy deny, or the backend's `assertInsideRoot`/symlink-escape detection.
 - **The cache is a built-in subsystem with a fixed position** (inside `vfs.ts`, outside user middleware, above the handler). Do not convert it into a user middleware — otherwise policy-denied results could enter the cache.
 - **Result unpacking convention**: tests must unpack `Result` with `expectOkResult` / `expectErrResult` from `test/helpers.ts`. Never assert inside an `if (result.ok)` block (assertions there silently pass).

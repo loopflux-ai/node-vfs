@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { FilesystemBackend } from '../../packages/node-vfs/src/backend/filesystem'
 import { InMemoryBackend } from '../../packages/node-vfs/src/backend/memory'
 import { createVFS } from '../../packages/node-vfs/src/index'
+import { buildEnvHint, ENV_HINT } from '../../packages/toolkit/src/constants'
 import { getSystemContext } from '../../packages/toolkit/src/system'
 import { VFSToolkit } from '../../packages/toolkit/src/toolkit'
 import { ALL_TOOLS, readFileTool } from '../../packages/toolkit/src/tools/index'
+import { cleanupTempDir, createTempDir } from '../setup'
 
 describe('vFSToolkit', () => {
   let toolkit: VFSToolkit
@@ -85,5 +88,36 @@ describe('vFSToolkit', () => {
     // Dynamic context overrides default.
     const result = await tk.executeTool(readFileTool, { path: '/f.txt' }, { cwd: '/override' })
     expect(result).toBe('test')
+  })
+
+  it('buildEnvHint: returns the default hint without a blocklist', () => {
+    expect(buildEnvHint(undefined)).toBe(ENV_HINT)
+    expect(buildEnvHint({})).toBe(ENV_HINT)
+  })
+
+  it('buildEnvHint: renders blocklist names and patterns', () => {
+    const hint = buildEnvHint({ envBlocklist: ['LD_PRELOAD', /_TOKEN$/, 'OPENAI_API_KEY'] })
+    expect(hint).toContain('LD_PRELOAD')
+    expect(hint).toContain('/_TOKEN$/')
+    expect(hint).toContain('OPENAI_API_KEY')
+    expect(hint).toContain('cannot bypass the blocklist')
+    expect(hint).not.toBe(ENV_HINT)
+  })
+
+  it('should announce the env blocklist in the execute tool description', async () => {
+    const root = await createTempDir()
+    try {
+      const vfs = createVFS({
+        backend: new FilesystemBackend({ rootDir: root }),
+        execute: { allowCommands: ['node'], envBlocklist: ['LD_PRELOAD', /_TOKEN$/] },
+      })
+      const tk = new VFSToolkit(vfs)
+      const execute = tk.getTool('execute')!
+      expect(execute.description).toContain('LD_PRELOAD')
+      expect(execute.description).toContain('/_TOKEN$/')
+    }
+    finally {
+      await cleanupTempDir(root)
+    }
   })
 })

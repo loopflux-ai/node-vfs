@@ -769,7 +769,7 @@ describe('handleExecute', () => {
         return { stdout: 'ok', stderr: '', exitCode: 0, timedOut: false, wasKilled: false, truncated: false, durationMs: 1 }
       },
     }
-    const ctx = makeCtx({ limits: { maxExecuteMs: 1000, maxOutputBytes: 1024 }, executeAllow: ['x'] })
+    const ctx = makeCtx({ limits: { maxExecuteMs: 1000, maxOutputBytes: 1024 }, executeConfig: { allowCommands: ['x'] } })
     const result = await handleExecute(fakeBackend as never, {
       kind: OP_KIND.EXECUTE,
       id: '1',
@@ -803,7 +803,7 @@ describe('handleExecute', () => {
       kind: OP_KIND.EXECUTE,
       id: '1',
       command: 'bad',
-    }, makeCtx({ executeAllow: ['bad'] }))
+    }, makeCtx({ executeConfig: { allowCommands: ['bad'] } }))
     expect(expectErrResult(result).code).toBe('EXEC_FAILED')
   })
 
@@ -819,7 +819,7 @@ describe('handleExecute', () => {
       kind: OP_KIND.EXECUTE,
       id: '1',
       command: 'cmd',
-    }, makeCtx({ executeAllow: ['cmd'] }))
+    }, makeCtx({ executeConfig: { allowCommands: ['cmd'] } }))
     expect(expectErrResult(result).code).toBe('ABORTED')
   })
 
@@ -835,7 +835,7 @@ describe('handleExecute', () => {
       kind: OP_KIND.EXECUTE,
       id: '1',
       command: 'no-such-cmd',
-    }, makeCtx({ executeAllow: ['no-such-cmd'] }))
+    }, makeCtx({ executeConfig: { allowCommands: ['no-such-cmd'] } }))
     expect(expectErrResult(result).code).toBe('COMMAND_NOT_FOUND')
   })
 
@@ -852,7 +852,7 @@ describe('handleExecute', () => {
       kind: OP_KIND.EXECUTE,
       id: '1',
       command: 'big',
-    }, makeCtx({ executeAllow: ['big'] }))
+    }, makeCtx({ executeConfig: { allowCommands: ['big'] } }))
     expect(expectErrResult(result).code).toBe('OUTPUT_TOO_LARGE')
   })
 
@@ -888,7 +888,7 @@ describe('handleExecute', () => {
       kind: OP_KIND.EXECUTE,
       id: '1',
       command: 'crash',
-    }, makeCtx({ executeAllow: ['crash'] }))
+    }, makeCtx({ executeConfig: { allowCommands: ['crash'] } }))
     expect(expectErrResult(result).code).toBe('INTERNAL_ERROR')
   })
 })

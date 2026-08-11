@@ -360,7 +360,7 @@ describe('createVFS (InMemoryBackend)', () => {
         Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }),
       )
       try {
-        const v = createVFS({ backend, execute: ['node'] })
+        const v = createVFS({ backend, execute: { allowCommands: ['node'] } })
         expect(expectErrResult(await v.execute('node', { args: ['x.js'], cwd: '/' })).code).toBe('PERMISSION_DENIED')
       }
       finally {
@@ -394,7 +394,7 @@ describe('createVFS (FilesystemBackend)', () => {
     root = await createTempDir()
     vfs = createVFS({
       backend: new FilesystemBackend({ rootDir: root }),
-      execute: ['node'],
+      execute: { allowCommands: ['node'] },
     })
   })
 
@@ -448,7 +448,7 @@ describe('createVFS (FilesystemBackend)', () => {
     // Regression: a backslash drive path (e.g. "C:\dir") used to slip past
     // path validation (cwd bypassed validatePath), then fail with
     // "Working directory does not exist" instead of a sandbox rejection.
-    const vm = createVFS({ backend: new FilesystemBackend({ rootDir: root, virtualMode: true }), execute: ['node'] })
+    const vm = createVFS({ backend: new FilesystemBackend({ rootDir: root, virtualMode: true }), execute: { allowCommands: ['node'] } })
     expect(expectErrResult(await vm.execute('node', { args: ['x.js'], cwd: 'C:\\some\\dir' })).code).toBe('PATH_TRAVERSAL')
   })
 

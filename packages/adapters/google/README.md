@@ -19,7 +19,7 @@ import { toGoogleTools } from '@loopflux/node-vfs-google'
 
 const vfs = createVFS({
   backend: new FilesystemBackend({ rootDir: './sandbox', virtualMode: true }),
-  execute: ['node'], // required to enable the execute tool
+  execute: { allowCommands: ['node'] }, // required to enable the execute tool
 })
 
 const agent = new Agent({
@@ -51,4 +51,4 @@ Returns `FunctionTool[]` — ready for the ADK `Agent({ tools })` constructor.
 
 ## Security
 
-The `execute` tool only works if `createVFS({ execute: [...] })` explicitly provides an allow-list — otherwise it returns `PERMISSION_DENIED` with an actionable message. File operations go through the VFS tools, never through shell commands.
+The `execute` tool only works if `createVFS({ execute: { allowCommands: [...] } })` explicitly provides an allow-list — otherwise it returns `PERMISSION_DENIED` with an actionable message. File operations go through the VFS tools, never through shell commands.

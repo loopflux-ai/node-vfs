@@ -14,20 +14,20 @@ import { TextDecoder } from 'node:util'
 
 /** Windows ANSI code page → WHATWG TextDecoder label. */
 const CODE_PAGE_TO_LABEL: Readonly<Record<string, string>> = {
-  '1250': 'windows-1250', // Central Europe
-  '1251': 'windows-1251', // Cyrillic
-  '1252': 'windows-1252', // Western Europe
-  '1253': 'windows-1253', // Greek
-  '1254': 'windows-1254', // Turkish
-  '1255': 'windows-1255', // Hebrew
-  '1256': 'windows-1256', // Arabic
-  '1257': 'windows-1257', // Baltic
-  '1258': 'windows-1258', // Vietnamese
-  '874': 'windows-874',   // Thai
-  '932': 'shift_jis',     // Japanese
-  '936': 'gbk',           // Simplified Chinese
-  '949': 'euc-kr',        // Korean
-  '950': 'big5',          // Traditional Chinese
+  1250: 'windows-1250', // Central Europe
+  1251: 'windows-1251', // Cyrillic
+  1252: 'windows-1252', // Western Europe
+  1253: 'windows-1253', // Greek
+  1254: 'windows-1254', // Turkish
+  1255: 'windows-1255', // Hebrew
+  1256: 'windows-1256', // Arabic
+  1257: 'windows-1257', // Baltic
+  1258: 'windows-1258', // Vietnamese
+  874: 'windows-874', // Thai
+  932: 'shift_jis', // Japanese
+  936: 'gbk', // Simplified Chinese
+  949: 'euc-kr', // Korean
+  950: 'big5', // Traditional Chinese
 }
 
 /** Map a numeric Windows code page to a TextDecoder label (pure, testable). */

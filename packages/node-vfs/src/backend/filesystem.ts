@@ -24,7 +24,7 @@ import fastGlob from 'fast-glob'
 import { dirname, join, normalize, resolve as pathResolve } from 'pathe'
 import { hasTraversalSegments, INTERNAL_GLOB_IGNORE, isHostAbsolutePath, isInternalFileName } from '../path.ts'
 import { decodeExecOutput } from '../utils/encoding.ts'
-import { buildSafeEnv } from '../utils/env.ts'
+import { buildChildEnv } from '../utils/env.ts'
 import { withMutex } from '../utils/mutex.ts'
 
 export class FilesystemBackendError extends Error {
@@ -363,7 +363,9 @@ export class FilesystemBackend implements StorageBackend {
 
   async execute(config: ExecuteConfig): Promise<ExecuteReceipt> {
     const cwd = await resolveCwdInner(config.cwd, this.root, this.virtualMode)
-    const safeEnv = buildSafeEnv(config.env)
+    // Full host env by default; per-op env overrides; user blocklist stripped
+    // (case-insensitive). No implicit filtering.
+    const safeEnv = buildChildEnv(process.env, config.env, config.envBlocklist)
     const startTime = Date.now()
     try {
       const result = await execa(config.command, config.args ?? [], {

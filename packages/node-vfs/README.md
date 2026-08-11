@@ -18,7 +18,7 @@ const vfs = createVFS({
     rootDir: './sandbox',
     virtualMode: true, // reject host absolute paths (e.g. C:/foo)
   }),
-  execute: ['node', 'git'], // enable execute with an allow-list (default: disabled)
+  execute: { allowCommands: ['node', 'git'] }, // enable execute with an allow-list (default: disabled)
 })
 
 await vfs.write_file('/notes.md', '# hello')
@@ -156,10 +156,63 @@ const r = await vfs.execute('node', {
 console.log(r.data.stdout, r.data.exitCode, r.data.durationMs)
 ```
 
-- **Default-deny**: every `execute` op is rejected unless `createVFS({ execute: [...] })` provides an allow-list of command names or `RegExp`s.
+- **Default-deny**: every `execute` op is rejected unless `createVFS({ execute: { allowCommands: [...] } })` provides an allow-list of command names or `RegExp`s.
 - `scope` (`'readonly' | 'readwrite'`) and `affectedPaths` are declarative audit fields, validated against policy — real enforcement is the allow-list + policy deny-list.
-- `env` is filtered through a safe allow-list (dangerous keys like `LD_PRELOAD`, `ComSpec` are stripped).
+- `env` inherits the full host `process.env` by default. Strip host vars you don't want to leak via `execute: { envBlocklist: [...] }` — exact names (case-insensitive) or RegExp patterns; per-op `env` overrides still apply.
 - An op-object overload is available: `vfs.execute({ kind: OP_KIND.EXECUTE, command, args })`.
+
+#### Recommended `envBlocklist` (copy-paste, adjust to your deployment)
+
+The child env is only as clean as this list — nothing is filtered implicitly. Start from the recommended tier and add as needed:
+
+```ts
+createVFS({
+  backend,
+  execute: {
+    allowCommands: ['node', 'git'],
+    envBlocklist: [
+      // Code-injection vectors (recommended; no legitimate subprocess use)
+      'LD_PRELOAD',
+      'LD_AUDIT',
+      'DYLD_INSERT_LIBRARIES',
+      'NODE_OPTIONS',
+      'BASH_ENV',
+      'ENV',
+      'SHELLOPTS',
+      'PROMPT_COMMAND',
+      'PS4',
+      'GIT_CONFIG_PARAMETERS',
+      'GIT_SSH_COMMAND',
+      'GIT_ASKPASS',
+      'ComSpec',
+      'PATHEXT',
+      // Secrets — exact names for known keys…
+      'OPENAI_API_KEY',
+      'ANTHROPIC_API_KEY',
+      'GEMINI_API_KEY',
+      'AWS_ACCESS_KEY_ID',
+      'AWS_SECRET_ACCESS_KEY',
+      'GITHUB_TOKEN',
+      'GITLAB_TOKEN',
+      'NPM_TOKEN',
+      'DATABASE_URL',
+      'MYSQL_PWD',
+      // …and RegExp patterns to cover naming conventions
+      /_TOKEN$/,
+      /_SECRET$/,
+      /_PASSWORD$/,
+      // Proxy (only if the child must not inherit your proxy)
+      /^(HTTP|HTTPS|NO|ALL)_PROXY$/i,
+    ],
+  },
+})
+```
+
+Notes:
+- **Exact names** match case-insensitively — `ComSpec` also blocks `COMSPEC`; `PATH` blocks `Path`.
+- **RegExp patterns** are tested against the key in its original case — use the `/i` flag to be case-insensitive. Patterns let you cover naming conventions (`/_TOKEN$/` catches any future token var) but can also match non-secret config keys (e.g. `/^AWS_/` hits `AWS_REGION`) — verify your patterns against `printenv` output before deploying.
+- `BASH_FUNC_<name>%%` entries (open set) cannot be enumerated; strip them in the host shell if that matters. A secret under an arbitrary name (`MY_PRIVATE_CREDS`) is only caught if it matches one of your patterns — keep secrets out of the host env for real isolation.
+- Toolchain vars (`LD_LIBRARY_PATH`, `PYTHONPATH`, `VIRTUAL_ENV`) are intentionally omitted — normal operation often depends on them; block only if you know the child must not inherit them.
 
 ## `createVFS` Options
 
@@ -176,7 +229,10 @@ interface VFSConfig {
   signal?: AbortSignal // instance-wide, AND-ed with per-op signals
   debug?: boolean // emit structured logs to stderr
   debugger?: VFSDebugger // custom debug sink
-  execute?: Array<string | RegExp> // execute allow-list (default: disabled)
+  execute?: {
+    allowCommands?: Array<string | RegExp> // command allow-list (default: disabled)
+    envBlocklist?: Array<string | RegExp> // env vars stripped: exact names (case-insensitive) or patterns
+  }
   cache?: CacheOptions | boolean // built-in cache; omitted/true = default-on
 }
 ```
@@ -271,7 +327,7 @@ Stable contract surface — never rename. `ErrResult` carries `code`, `error`, a
 
 - **Default-deny execute**: an allow-list is required; the guard matches on command basename or `RegExp`.
 - **Path validation chain**: `validatePath` (facade) → policy deny (middleware) → `assertInsideRoot` + symlink realpath (backend) — defense in depth.
-- **Safe subprocess env**: only allowlisted `process.env` keys are passed; dangerous keys are filtered.
+- **Safe subprocess env**: the child inherits the full host `process.env` by default. Env hardening is caller-configured via `execute: { envBlocklist: [...] }` — list secrets/proxy vars you don't want to leak (case-insensitive matching). No implicit filtering.
 - **Resource caps**: file size, output bytes, timeout, edit size, batch item count, pattern length, grep results.
 - **Threat-model boundary**: the allow-list restricts the command *shape*, not arbitrary code (`node script.js`). For adversarial isolation, run in a container or sandboxed user.
 

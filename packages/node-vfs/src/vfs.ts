@@ -13,7 +13,6 @@ import type {
   EditFileOpts,
   EditResult,
   Encoding,
-  ExecuteAllowList,
   ExecuteCommandOpts,
   ExecuteMeta,
   ExecuteOp,
@@ -45,6 +44,7 @@ import type {
   Result,
   SandboxInfo,
   VFSConfig,
+  VFSExecuteConfig,
   WriteFileOp,
   WriteFileOpts,
   WriteResult,
@@ -72,13 +72,13 @@ function buildContext(
   instanceSignal: AbortSignal | undefined,
   opSignal: AbortSignal | undefined,
   ctxDebugger: VFSDebugger | undefined,
-  executeAllow: ExecuteAllowList | undefined,
+  executeConfig: VFSExecuteConfig | undefined,
 ): ExecutionContext {
   return {
     signal: combineSignals(instanceSignal, opSignal),
     limits,
     debugger: ctxDebugger,
-    ...(executeAllow ? { executeAllow } : {}),
+    ...(executeConfig ? { executeConfig } : {}),
   }
 }
 
@@ -458,7 +458,14 @@ export function createVFS(config: VFSConfig) {
   }
 
   function describe(): SandboxInfo | undefined {
-    return backend.describe?.()
+    const info = backend.describe?.()
+    if (!info)
+      return info
+    // Surface the execute env blocklist so the LLM knows which host vars are
+    // stripped from the subprocess env (toolkit bakes it into descriptions).
+    return config.execute?.envBlocklist
+      ? { ...info, envBlocklist: config.execute.envBlocklist }
+      : info
   }
 
   return {

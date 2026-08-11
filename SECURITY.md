@@ -19,7 +19,7 @@ If you cannot use the private reporting tool, email the maintainers at `38174031
 The following are in scope and **always welcome**:
 
 - Sandbox escape: path traversal, symlink escape, `rootDir` boundary bypass
-- Execute guard bypass: allow-list evasion, unsafe env leakage (`LD_PRELOAD`, `ComSpec`, etc.)
+- Execute guard bypass: allow-list evasion, unsafe env leakage (`LD_PRELOAD`, `ComSpec`, etc.). The subprocess env inherits the full host env by default — `createVFS({ execute: { envBlocklist } })` is the caller's control for stripping sensitive/injection-prone vars.
 - Policy/quota bypass: deny-list filtering gaps, quota accounting errors
 - Cache correctness leading to cross-tenant data exposure or stale permission states
 

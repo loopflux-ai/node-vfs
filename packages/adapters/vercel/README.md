@@ -19,7 +19,7 @@ import { generateText } from 'ai'
 
 const vfs = createVFS({
   backend: new FilesystemBackend({ rootDir: './sandbox', virtualMode: true }),
-  execute: ['node'], // required to enable the execute tool
+  execute: { allowCommands: ['node'] }, // required to enable the execute tool
 })
 
 const tools = toVercelTools(vfs)
@@ -62,4 +62,4 @@ A wrapper exposing `description` / `parameters` / `execute`, abstracting `ai.Too
 
 ## Security
 
-The `execute` tool only works if `createVFS({ execute: [...] })` explicitly provides an allow-list — otherwise it returns `PERMISSION_DENIED` with an actionable message. File operations go through the VFS tools, never through shell commands.
+The `execute` tool only works if `createVFS({ execute: { allowCommands: [...] } })` explicitly provides an allow-list — otherwise it returns `PERMISSION_DENIED` with an actionable message. File operations go through the VFS tools, never through shell commands.

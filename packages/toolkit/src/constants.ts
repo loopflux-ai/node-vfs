@@ -29,6 +29,23 @@ export function buildPathHint(info?: SandboxInfo): string {
 /** Suffix appended when output is truncated. */
 export const TRUNCATION_MARKER = `\n\n... [Truncated: output exceeded ${DEFAULT_MAX_OUTPUT_CHARS} characters]`
 
+/** Shared env-semantics placeholder used by the execute tool description. */
+export const ENV_HINT = 'Env: the child inherits the full host environment; per-op "env" vars are merged on top.'
+
+/**
+ * Builds the env hint for the execute tool description. When the VFS exposes
+ * an env blocklist, the hint names the blocked vars/patterns so the LLM does
+ * not waste calls passing values that will be silently stripped.
+ */
+export function buildEnvHint(info?: SandboxInfo): string {
+  const blocklist = info?.envBlocklist
+  if (!blocklist || blocklist.length === 0) {
+    return ENV_HINT
+  }
+  const rendered = blocklist.map(item => typeof item === 'string' ? item : item.toString()).join(', ')
+  return `Env: the child inherits the full host environment minus blocked vars/patterns: ${rendered}. Per-op "env" vars are merged on top but cannot bypass the blocklist.`
+}
+
 /** Why a result was truncated — drives the truncation note wording. */
 export type TruncationReason = 'maxOutputChars' | 'maxFileSize' | 'maxOutputBytes' | 'maxResults'
 

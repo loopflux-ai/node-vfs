@@ -1,6 +1,6 @@
 import type { VFSToolDefinition } from '../types'
 import { z } from 'zod'
-import { DEFAULT_MAX_OUTPUT_CHARS, PATH_HINT, TRUNCATION_MARKER, truncationNote } from '../constants'
+import { DEFAULT_MAX_OUTPUT_CHARS, ENV_HINT, PATH_HINT, TRUNCATION_MARKER, truncationNote } from '../constants'
 import { formatToolError } from '../error'
 import { buildEnvironmentPrompt, getSystemContext } from '../system'
 
@@ -12,6 +12,7 @@ MUST:
   ✗ { "command": "node -e console.log(1)" }
 - ENCODING: modern tools (node, git) emit UTF-8; Windows legacy tools (cmd, powershell) emit ANSI (e.g. GBK on zh-CN) — decoded automatically (UTF-8 first). If still garbled, use node (if allowed) or set "outputEncoding".
 - ${PATH_HINT}
+- ${ENV_HINT}
 - "cwd" defaults to "/" (sandbox root); relative cwd resolves under rootDir.
 
 Output:
@@ -27,7 +28,7 @@ const EXECUTE_SCHEMA = z.object({
   command: z.string().describe('Executable name only (e.g. "node", "git", "powershell"). Do NOT put arguments here — put them in "args".'),
   args: z.array(z.string()).optional().describe('Arguments passed to the executable, one per array element (e.g. ["-c", "console.log(1)"] or ["/c", "dir"]).'),
   cwd: z.string().default('/').describe('Working directory — "/" is the sandbox root; relative paths resolve under rootDir.'),
-  env: z.record(z.string(), z.string()).optional().describe('Extra env vars (dangerous ones filtered).'),
+  env: z.record(z.string(), z.string()).optional().describe('Extra env vars merged over the inherited host env (the VFS may strip configured blocklisted vars — exact names or patterns).'),
   timeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds.'),
   maxOutputBytes: z.number().int().positive().optional().describe('Max output bytes to capture.'),
   outputEncoding: z.string().optional().describe('Rarely needed — omit it. Explicit TextDecoder label (e.g. "gbk") when output is garbled; otherwise decoding tries UTF-8 first, then the system ANSI code page.'),

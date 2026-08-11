@@ -1,5 +1,5 @@
 import type { ToolExecutionContext, VFS, VFSToolDefinition } from './types'
-import { buildPathHint, PATH_HINT } from './constants'
+import { buildEnvHint, buildPathHint, ENV_HINT, PATH_HINT } from './constants'
 import { ALL_TOOLS } from './tools'
 
 export class VFSToolkit {
@@ -18,11 +18,12 @@ export class VFSToolkit {
     // paths without trial-and-error.
     const info = vfs.describe?.()
     const pathHint = buildPathHint(info)
-    this.tools = pathHint === PATH_HINT
+    const envHint = buildEnvHint(info)
+    this.tools = pathHint === PATH_HINT && envHint === ENV_HINT
       ? ALL_TOOLS
       : ALL_TOOLS.map(t => ({
           ...t,
-          description: t.description.replaceAll(PATH_HINT, pathHint),
+          description: t.description.replaceAll(PATH_HINT, pathHint).replaceAll(ENV_HINT, envHint),
         }))
   }
 

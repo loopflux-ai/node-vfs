@@ -25,7 +25,7 @@ describe('executeTool', () => {
       // execute is default-deny; allow node for script runs.
       vfs = createVFS({
         backend: new FilesystemBackend({ rootDir: root }),
-        execute: ['node'],
+        execute: { allowCommands: ['node'] },
       })
       toolkit = new VFSToolkit(vfs)
     })

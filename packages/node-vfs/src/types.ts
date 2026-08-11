@@ -128,6 +128,8 @@ export interface ExecuteConfig {
   args?: string[]
   cwd: string
   env: Record<string, string>
+  /** Host env vars to strip from the child env: exact names (case-insensitive) or RegExp patterns. */
+  envBlocklist?: readonly EnvBlockItem[]
   timeoutMs: number
   maxOutputBytes: number
   signal: AbortSignal
@@ -286,12 +288,38 @@ export type ExecuteAllowItem = string | RegExp
 
 export type ExecuteAllowList = readonly ExecuteAllowItem[]
 
+/**
+ * Env blocklist entry: an exact env var name (matched case-insensitively) or a
+ * RegExp pattern (matched against the key, e.g. `/_TOKEN$/`). Patterns let you
+ * cover naming conventions instead of enumerating every key — with the caveat
+ * that they can also match non-secret config keys (e.g. `AWS_REGION`).
+ */
+export type EnvBlockItem = string | RegExp
+
+/** Execute configuration on `createVFS({ execute })`. */
+export interface VFSExecuteConfig {
+  /**
+   * Command allow-list (default-deny): commands are rejected unless their
+   * basename or the command field matches one of these entries (command names
+   * or RegExps). Undefined/empty ⇒ every execute op is rejected.
+   */
+  allowCommands?: ExecuteAllowList
+  /**
+   * Host env vars stripped from the subprocess env: exact names
+   * (case-insensitive) or RegExp patterns. The child inherits the full host
+   * `process.env` by default; list here any vars you do not want to leak
+   * (e.g. `OPENAI_API_KEY`, `HTTP_PROXY`, or `/_TOKEN$/` to cover all token
+   * names). Patterns are tested against the original key case.
+   */
+  envBlocklist?: readonly EnvBlockItem[]
+}
+
 export interface ExecutionContext {
   signal: AbortSignal
   limits: { maxFileSize: number, maxOutputBytes: number, maxExecuteMs: number, maxEditSize: number }
   debugger?: VFSDebugger
-  /** Execute allow-list; undefined ⇒ execute disabled (default-deny). */
-  executeAllow?: ExecuteAllowList
+  /** Execute config; undefined ⇒ execute disabled (default-deny). */
+  executeConfig?: VFSExecuteConfig
 }
 
 export interface Limits {
@@ -308,6 +336,12 @@ export interface SandboxInfo {
   rootDir?: string
   /** True when host absolute paths are rejected (virtualMode). */
   virtualMode?: boolean
+  /**
+   * Env vars stripped from the subprocess env (exact names or patterns).
+   * Exposed so the LLM knows which host vars are blocked before calling
+   * `execute`.
+   */
+  envBlocklist?: readonly EnvBlockItem[]
 }
 
 /** Options for the built-in cache subsystem (see `VFSConfig.cache`). */
@@ -326,11 +360,11 @@ export interface VFSConfig {
   debug?: boolean
   debugger?: VFSDebugger
   /**
-   * Execute allow-list (default-deny): commands are rejected unless their
-   * basename or the command field matches one of these entries (command names
-   * or RegExps). Undefined/empty ⇒ every execute op is rejected.
+   * Execute configuration (default-deny): `allowCommands` lists permitted
+   * command names/RegExps; `envBlocklist` strips matching host env vars from
+   * the subprocess env (case-insensitive). Undefined/empty ⇒ execute disabled.
    */
-  execute?: ExecuteAllowList
+  execute?: VFSExecuteConfig
   /**
    * Built-in cache subsystem, appended innermost by createVFS (outermost user
    * middleware runs first, cache sits just above the handler). Default-on.

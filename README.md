@@ -42,7 +42,7 @@ import { VFSToolkit } from '@loopflux/node-vfs-toolkit'
 
 const vfs = createVFS({
   backend: new FilesystemBackend({ rootDir: './sandbox', virtualMode: true }),
-  execute: ['node', 'git'], // command execution is disabled by default
+  execute: { allowCommands: ['node', 'git'] }, // command execution is disabled by default
 })
 
 await vfs.write_file('/hello.txt', 'Hello, agent!')

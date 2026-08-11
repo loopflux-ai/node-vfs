@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ancestorPaths, decodeCursor, encodeCursor, INTERNAL_GLOB_IGNORE, isHostAbsolutePath, isInternalFileName, validatePath } from '../packages/node-vfs/src/path'
 import { arrayToAsyncIterable, MAX_BATCH_ITEMS, processInBatches } from '../packages/node-vfs/src/utils/batch'
 import { createDefaultDebugger, DEBUG_CATEGORY } from '../packages/node-vfs/src/utils/debug'
-import { buildSafeEnv } from '../packages/node-vfs/src/utils/env'
+import { buildChildEnv } from '../packages/node-vfs/src/utils/env'
 import { withMutex } from '../packages/node-vfs/src/utils/mutex'
 import { combineSignals, throwIfAborted } from '../packages/node-vfs/src/utils/signal'
 import { estimateBinaryTokens, estimateTextTokens, generateOpId, METADATA_OVERHEAD, TOKENS_PER_MATCH_LINE } from '../packages/node-vfs/src/utils/tokens'
@@ -324,25 +324,81 @@ describe('internal glob ignore patterns', () => {
 
 // ── env ────────────────────────────────────────────────────────────────────
 
-describe('buildSafeEnv', () => {
-  it('should include whitelisted keys from process.env', () => {
-    const env = buildSafeEnv()
-    // At least PATH should be present on any system.
-    expect(env.PATH).toBeDefined()
+describe('buildChildEnv', () => {
+  it('should inherit the full host env by default', () => {
+    const env = buildChildEnv({ PATH: '/usr/bin', HOME: '/root', NODE_ENV: 'test' })
+    expect(env).toEqual({ PATH: '/usr/bin', HOME: '/root', NODE_ENV: 'test' })
   })
 
-  it('should exclude dangerous keys', () => {
-    const env = buildSafeEnv({ LD_PRELOAD: '/evil.so', NODE_OPTIONS: '--inspect', SAFE_VAR: 'ok' })
-    expect(env.LD_PRELOAD).toBeUndefined()
-    expect(env.NODE_OPTIONS).toBeUndefined()
+  it('should skip non-string host values', () => {
+    const env = buildChildEnv({ PATH: '/usr/bin', EMPTY: undefined, NUM: 42 as unknown as string })
+    expect(env.PATH).toBe('/usr/bin')
+    expect(env.EMPTY).toBeUndefined()
+    expect(env.NUM).toBeUndefined()
+  })
+
+  it('should merge extra over host values', () => {
+    const env = buildChildEnv({ PATH: '/usr/bin' }, { PATH: '/custom', EXTRA: 'x' })
+    expect(env.PATH).toBe('/custom')
+    expect(env.EXTRA).toBe('x')
+  })
+
+  it('should strip blocklist keys case-insensitively', () => {
+    const env = buildChildEnv(
+      { PATH: '/usr/bin', API_KEY: 'secret', Path: '/win', ComSpec: 'cmd' },
+      {},
+      ['api_key', 'PATH'],
+    )
+    expect(env.API_KEY).toBeUndefined()
+    expect(env.Path).toBeUndefined()
+    expect(env.ComSpec).toBe('cmd')
+  })
+
+  it('should do nothing with an empty blocklist', () => {
+    const env = buildChildEnv({ A: '1', B: '2' }, undefined, [])
+    expect(env).toEqual({ A: '1', B: '2' })
+  })
+
+  it('should match RegExp patterns in the blocklist', () => {
+    const env = buildChildEnv(
+      {
+        GITHUB_TOKEN: 't',
+        AWS_ACCESS_KEY_ID: 'k',
+        AWS_REGION: 'us-east-1',
+        MONKEY: 'ok', // ends with "KEY" but not "_KEY"
+        TOKENIZER: 'ok', // ends with "TOKEN" but not "_TOKEN"
+        SAFE_VAR: 'ok',
+      },
+      {},
+      [/^AWS_/, /_TOKEN$/, /_KEY$/],
+    )
+    expect(env.GITHUB_TOKEN).toBeUndefined()
+    expect(env.AWS_ACCESS_KEY_ID).toBeUndefined()
+    expect(env.AWS_REGION).toBeUndefined()
+    expect(env.MONKEY).toBe('ok')
+    expect(env.TOKENIZER).toBe('ok')
     expect(env.SAFE_VAR).toBe('ok')
   })
 
-  it('should exclude Windows dangerous keys', () => {
-    const env = buildSafeEnv({ ComSpec: '/evil.exe', COMSPEC: '/evil.exe', PATHEXT: '.exe' })
-    expect(env.ComSpec).toBeUndefined()
-    expect(env.COMSPEC).toBeUndefined()
-    expect(env.PATHEXT).toBeUndefined()
+  it('should match RegExp patterns against the original key case', () => {
+    const env = buildChildEnv(
+      { HTTP_PROXY: 'p', http_proxy: 'p', HTTPS_PROXY: 'p' },
+      {},
+      [/^(HTTP|HTTPS)_PROXY$/i],
+    )
+    expect(env.HTTP_PROXY).toBeUndefined()
+    expect(env.http_proxy).toBeUndefined()
+    expect(env.HTTPS_PROXY).toBeUndefined()
+  })
+
+  it('should strip global/sticky flags so patterns stay deterministic', () => {
+    // /g without the strip would advance lastIndex and skip keys.
+    const env = buildChildEnv(
+      { TOKEN_A: 'a', TOKEN_B: 'b', TOKEN_C: 'c' },
+      {},
+      [/^TOKEN_/g],
+    )
+    expect(env).toEqual({})
   })
 })
 
