@@ -1,7 +1,7 @@
 {
   "name": "@loopflux/node-vfs",
   "type": "module",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Virtual file system for LLM Agents",
   "author": "yu <381740310@qq.com> (https://github.com/zhengyuzi)",
   "license": "MIT",

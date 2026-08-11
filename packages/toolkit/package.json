@@ -1,7 +1,7 @@
 {
   "name": "@loopflux/node-vfs-toolkit",
   "type": "module",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "The toolkit of @loopflux/node-vfs",
   "author": "yu <381740310@qq.com> (https://github.com/zhengyuzi)",
   "license": "MIT",
