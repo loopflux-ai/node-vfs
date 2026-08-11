@@ -1,0 +1,36 @@
+{
+  "name": "node-vfs-monorepo",
+  "type": "module",
+  "private": true,
+  "packageManager": "pnpm@10.34.5",
+  "description": "Virtual file system for LLM Agents",
+  "author": "yu <381740310@qq.com> (https://github.com/zhengyuzi)",
+  "license": "MIT",
+  "homepage": "https://github.com/loopflux-ai/node-vfs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/loopflux-ai/node-vfs"
+  },
+  "bugs": {
+    "url": "https://github.com/loopflux-ai/node-vfs/issues"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint",
+    "lint:fix": "eslint --fix",
+    "test": "vitest run",
+    "release": "bumpp -r --excute=\"pnpm i\""
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^9.1.0",
+    "@types/node": "^26.0.1",
+    "bumpp": "^12.2.0",
+    "consola": "^3.4.2",
+    "eslint": "^10.6.0",
+    "tsdown": "^0.22.3",
+    "tsx": "^4.20.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}

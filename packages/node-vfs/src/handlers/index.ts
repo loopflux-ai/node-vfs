@@ -1,0 +1,8 @@
+export { dispatch } from './dispatch.ts'
+export { buildExecuteGuard, handleExecute, parseCommandName } from './execute.ts'
+export type { ExecuteAllowItem, ExecuteAllowList, ExecuteGuardResult } from './execute.ts'
+export { handleDeleteFile, handleEditFile, handleReadFile, handleWriteFile } from './files.ts'
+export { isCommandOp, isQueryOp, OP_KIND } from './kinds.ts'
+export { handleMkdir } from './mkdir.ts'
+export { buildLineMatcher, handleGlob, handleGrep, handleLs } from './query.ts'
+export type { LineMatcher } from './query.ts'

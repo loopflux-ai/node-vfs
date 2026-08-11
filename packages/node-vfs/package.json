@@ -1,0 +1,43 @@
+{
+  "name": "@loopflux/node-vfs",
+  "type": "module",
+  "version": "0.0.0",
+  "description": "Virtual file system for LLM Agents",
+  "author": "yu <381740310@qq.com> (https://github.com/zhengyuzi)",
+  "license": "MIT",
+  "homepage": "https://github.com/loopflux-ai/node-vfs/tree/main/packages/node-vfs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/loopflux-ai/node-vfs"
+  },
+  "bugs": {
+    "url": "https://github.com/loopflux-ai/node-vfs/issues"
+  },
+  "keywords": [
+    "vfs",
+    "node-vfs",
+    "llm",
+    "agent"
+  ],
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsdown",
+    "watch": "tsdown --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "execa": "^9.6.1",
+    "fast-glob": "^3.3.3",
+    "lru-cache": "^11.5.1",
+    "micromatch": "^4.0.8",
+    "p-limit": "^7.3.0",
+    "pathe": "^2.0.3"
+  },
+  "devDependencies": {
+    "@types/micromatch": "^4.0.10"
+  }
+}

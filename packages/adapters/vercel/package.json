@@ -1,0 +1,46 @@
+{
+  "name": "@loopflux/node-vfs-vercel",
+  "type": "module",
+  "version": "0.0.0",
+  "description": "The Vercel adapter of @loopflux/node-vfs",
+  "author": "yu <381740310@qq.com> (https://github.com/zhengyuzi)",
+  "license": "MIT",
+  "homepage": "https://github.com/loopflux-ai/node-vfs/tree/main/packages/adapters/vercel",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/loopflux-ai/node-vfs"
+  },
+  "bugs": {
+    "url": "https://github.com/loopflux-ai/node-vfs/issues"
+  },
+  "keywords": [
+    "vfs",
+    "node-vfs",
+    "llm",
+    "agent",
+    "vercel",
+    "adapter",
+    "@loopflux/node-vfs"
+  ],
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsdown",
+    "watch": "tsdown --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@loopflux/node-vfs": ">=0.0.1",
+    "@loopflux/node-vfs-toolkit": ">=0.0.1",
+    "ai": ">=7.0.0",
+    "zod": ">=4.4.3"
+  },
+  "devDependencies": {
+    "@loopflux/node-vfs": "workspace:*",
+    "@loopflux/node-vfs-toolkit": "workspace:*",
+    "ai": "^7.0.48"
+  }
+}

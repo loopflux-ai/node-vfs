@@ -1,0 +1,46 @@
+{
+  "name": "@loopflux/node-vfs-langchain",
+  "type": "module",
+  "version": "0.0.0",
+  "description": "The LangChain adapter of @loopflux/node-vfs",
+  "author": "yu <381740310@qq.com> (https://github.com/zhengyuzi)",
+  "license": "MIT",
+  "homepage": "https://github.com/loopflux-ai/node-vfs/tree/main/packages/adapters/langchain",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/loopflux-ai/node-vfs"
+  },
+  "bugs": {
+    "url": "https://github.com/loopflux-ai/node-vfs/issues"
+  },
+  "keywords": [
+    "vfs",
+    "node-vfs",
+    "llm",
+    "agent",
+    "langchain",
+    "adapter",
+    "@loopflux/node-vfs"
+  ],
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsdown",
+    "watch": "tsdown --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@langchain/core": ">=1.2.1",
+    "@loopflux/node-vfs": ">=0.0.1",
+    "@loopflux/node-vfs-toolkit": ">=0.0.1",
+    "zod": ">=4.4.3"
+  },
+  "devDependencies": {
+    "@langchain/core": "^1.2.1",
+    "@loopflux/node-vfs": "workspace:*",
+    "@loopflux/node-vfs-toolkit": "workspace:*"
+  }
+}
