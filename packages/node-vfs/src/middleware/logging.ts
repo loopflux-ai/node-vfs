@@ -8,6 +8,7 @@
  * Place outermost so cache hits are also recorded.
  */
 
+import type { Op, Result } from '../types.ts'
 import type { Middleware } from './compose.ts'
 import { performance } from 'node:perf_hooks'
 import { OP_KIND } from '../handlers/kinds.ts'
@@ -19,8 +20,8 @@ export interface LogEntryStart {
   opId: string
   opKind: string
   path?: string
-  /** Command when opKind is 'execute'. */
-  command?: string
+  /** Execute command — present when opKind is 'execute'. */
+  execute?: { command: string }
 }
 
 /** End event — emitted after the handler completes (or throws). */
@@ -30,22 +31,61 @@ export interface LogEntryEnd {
   opId: string
   opKind: string
   path?: string
-  /** Command when opKind is 'execute'. */
-  command?: string
   ok: boolean
   durationMs: number
   /** Error code (NOT_FOUND, PERMISSION_DENIED, …) when !ok. */
   code?: string
-  /** Byte count from meta. */
+  /** Byte count from meta (bytesReturned / bytesWritten / stdoutBytes). */
   bytes?: number
-  /** Exit code when opKind is 'execute'. */
-  exitCode?: number
+  /**
+   * Execute-specific payload — present when opKind is 'execute'.
+   * `command` is always set; `exitCode` is absent when the subprocess never
+   * ran (guard-rejected, aborted, unsupported).
+   */
+  execute?: { command: string, exitCode?: number }
+  /**
+   * Normalised outcome of the operation — derived from ok/code/exitCode.
+   * Set on end events emitted by this middleware; see `OpStatus`.
+   */
+  status: OpStatus
 }
+
+/** Normalised operation outcome carried by LogEntryEnd.status. */
+export type OpStatus = 'success' | 'failed' | 'cancelled' | 'rejected' | 'error'
 
 export type LogEntry = LogEntryStart | LogEntryEnd
 
 export interface LoggingOptions {
   log: (entry: LogEntry) => void
+}
+
+/**
+ * Derive the normalised outcome for LogEntryEnd.status.
+ *
+ * - ABORTED           → 'cancelled' (signal cancellation)
+ * - PERMISSION_DENIED → 'rejected'  (policy deny or execute guard)
+ * - other errors      → 'error'
+ * - ok execute        → 'success' / 'failed' by exitCode
+ * - ok non-execute    → 'success'
+ * - undefined result  → 'error' (next() threw before returning)
+ */
+function deriveStatus(op: Op, result: Result<unknown, unknown> | undefined): OpStatus {
+  if (!result)
+    return 'error'
+  if (!result.ok) {
+    if (result.code === 'ABORTED')
+      return 'cancelled'
+    if (result.code === 'PERMISSION_DENIED')
+      return 'rejected'
+    return 'error'
+  }
+  if (op.kind === OP_KIND.EXECUTE) {
+    // Read exitCode from meta — the same source as LogEntryEnd.execute.exitCode,
+    // so the status and the exitCode field can never contradict each other.
+    const meta = result.meta as { exitCode?: number }
+    return meta.exitCode === 0 ? 'success' : 'failed'
+  }
+  return 'success'
 }
 
 export function createLoggingMiddleware(opts: LoggingOptions): Middleware {
@@ -62,7 +102,7 @@ export function createLoggingMiddleware(opts: LoggingOptions): Middleware {
       opId: op.id,
       opKind: op.kind,
       ...(path !== undefined ? { path } : {}),
-      ...(command !== undefined ? { command } : {}),
+      ...(command !== undefined ? { execute: { command } } : {}),
     })
 
     const start = performance.now()
@@ -76,8 +116,9 @@ export function createLoggingMiddleware(opts: LoggingOptions): Middleware {
         opKind: op.kind,
         ok: result.ok,
         durationMs,
+        status: deriveStatus(op, result),
         ...(path !== undefined ? { path } : {}),
-        ...(command !== undefined ? { command } : {}),
+        ...(command !== undefined ? { execute: { command } } : {}),
       }
       if (!result.ok) {
         entry.code = result.code
@@ -90,9 +131,9 @@ export function createLoggingMiddleware(opts: LoggingOptions): Middleware {
           entry.bytes = meta.bytesWritten
         else if (typeof meta.stdoutBytes === 'number')
           entry.bytes = meta.stdoutBytes
-        if (op.kind === OP_KIND.EXECUTE) {
+        if (op.kind === OP_KIND.EXECUTE && entry.execute) {
           if (typeof meta.exitCode === 'number')
-            entry.exitCode = meta.exitCode
+            entry.execute.exitCode = meta.exitCode
         }
       }
       opts.log(entry)
@@ -110,8 +151,9 @@ export function createLoggingMiddleware(opts: LoggingOptions): Middleware {
         opKind: op.kind,
         ok: false,
         durationMs,
+        status: deriveStatus(op, undefined),
         ...(path !== undefined ? { path } : {}),
-        ...(command !== undefined ? { command } : {}),
+        ...(command !== undefined ? { execute: { command } } : {}),
       })
       throw e
     }

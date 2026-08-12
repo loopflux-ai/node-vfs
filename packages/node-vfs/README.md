@@ -287,7 +287,7 @@ const vfs = createVFS({
 
 | Middleware | Purpose |
 |---|---|
-| `createLoggingMiddleware` | Structured `start`/`end` events per op (opId-correlated, includes duration/bytes/exitCode) |
+| `createLoggingMiddleware` | Structured `start`/`end` events per op (opId-correlated, includes duration/bytes, and execute command/exit code in `execute`) |
 | `createPolicyMiddleware` | `deny: RegExp[]` — rejects direct access **and** filters denied entries from ls/glob/grep results |
 | `createQuotaMiddleware` | In-memory byte-count quota for writes/edits/deletes (mutex-protected) |
 

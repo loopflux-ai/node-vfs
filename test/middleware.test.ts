@@ -1,4 +1,4 @@
-import type { LogEntry, LogEntryEnd } from '../packages/node-vfs/src/middleware/logging'
+import type { LogEntry, LogEntryEnd, LogEntryStart } from '../packages/node-vfs/src/middleware/logging'
 /**
  * Middleware tests: Cache, Logging, Policy, Quota.
  */
@@ -338,6 +338,9 @@ describe('logging middleware', () => {
     expect(end.opKind).toBe('read_file')
     expect(end.ok).toBe(true)
     expect(end.durationMs).toBeGreaterThanOrEqual(0)
+    // Non-execute ok ops derive a success status and carry no execute payload.
+    expect(end.status).toBe('success')
+    expect('execute' in end).toBe(false)
   })
 
   it('should log failed operations with code on end event', async () => {
@@ -362,9 +365,12 @@ describe('logging middleware', () => {
     await loggingMw(makeCtx(), op, makeNext(backend)(op))
     expect(logs).toHaveLength(2)
     expect(logs[0]!.phase).toBe('start')
-    expect(logs[0]!.command).toBe('node')
+    expect((logs[0]! as LogEntryStart).execute?.command).toBe('node')
     expect(logs[1]!.phase).toBe('end')
-    expect(logs[1]!.command).toBe('node')
+    const end = logs[1]! as LogEntryEnd
+    expect(end.execute?.command).toBe('node')
+    // The subprocess never ran (UNSUPPORTED) — exitCode must be absent.
+    expect(end.execute?.exitCode).toBeUndefined()
   })
 
   it('should record bytesReturned from read_file meta on end event', async () => {
@@ -393,7 +399,100 @@ describe('logging middleware', () => {
     expect('exitCode' in logs[0]!).toBe(false)
     const end = logs[1]! as LogEntryEnd
     expect(end.bytes).toBe(42)
-    expect(end.exitCode).toBe(3)
+    expect(end.execute?.exitCode).toBe(3)
+  })
+
+  it('should derive success status for a successful execute', async () => {
+    const logs: LogEntry[] = []
+    const loggingMw = createLoggingMiddleware({ log: entry => logs.push(entry) })
+    const op: Op = { kind: OP_KIND.EXECUTE, id: '1', command: 'cmd' } as Op
+    const fakeNext = async (): Promise<Result<unknown, unknown>> => ({
+      ok: true,
+      data: { exitCode: 0 },
+      meta: { stdoutBytes: 0, exitCode: 0 },
+      tokens: 0,
+    })
+
+    await loggingMw(makeCtx(), op, fakeNext)
+    expect((logs[1]! as LogEntryEnd).status).toBe('success')
+  })
+
+  it('should derive failed status when execute exits non-zero', async () => {
+    const logs: LogEntry[] = []
+    const loggingMw = createLoggingMiddleware({ log: entry => logs.push(entry) })
+    const op: Op = { kind: OP_KIND.EXECUTE, id: '1', command: 'cmd' } as Op
+    const fakeNext = async (): Promise<Result<unknown, unknown>> => ({
+      ok: true,
+      data: { exitCode: 3 },
+      meta: { stdoutBytes: 42, exitCode: 3 },
+      tokens: 0,
+    })
+
+    await loggingMw(makeCtx(), op, fakeNext)
+    expect((logs[1]! as LogEntryEnd).status).toBe('failed')
+  })
+
+  it('should derive cancelled status from ABORTED errors', async () => {
+    const logs: LogEntry[] = []
+    const loggingMw = createLoggingMiddleware({ log: entry => logs.push(entry) })
+    const op: Op = { kind: OP_KIND.READ_FILE, id: '1', path: '/f.txt' } as Op
+    const fakeNext = async (): Promise<Result<unknown, unknown>> => ({
+      ok: false,
+      code: 'ABORTED',
+      error: 'Operation aborted by caller',
+      suggestions: [],
+      opId: '1',
+      kind: OP_KIND.READ_FILE,
+    })
+
+    await loggingMw(makeCtx(), op, fakeNext)
+    expect((logs[1]! as LogEntryEnd).status).toBe('cancelled')
+  })
+
+  it('should derive rejected status from PERMISSION_DENIED errors', async () => {
+    const logs: LogEntry[] = []
+    const loggingMw = createLoggingMiddleware({ log: entry => logs.push(entry) })
+    const op: Op = { kind: OP_KIND.READ_FILE, id: '1', path: '/f.txt' } as Op
+    const fakeNext = async (): Promise<Result<unknown, unknown>> => ({
+      ok: false,
+      code: 'PERMISSION_DENIED',
+      error: 'Permission denied',
+      suggestions: [],
+      opId: '1',
+      kind: OP_KIND.READ_FILE,
+    })
+
+    await loggingMw(makeCtx(), op, fakeNext)
+    expect((logs[1]! as LogEntryEnd).status).toBe('rejected')
+  })
+
+  it('should derive error status for other failures', async () => {
+    const logs: LogEntry[] = []
+    const loggingMw = createLoggingMiddleware({ log: entry => logs.push(entry) })
+    const op: Op = { kind: OP_KIND.READ_FILE, id: '1', path: '/noexist' } as Op
+    const fakeNext = async (): Promise<Result<unknown, unknown>> => ({
+      ok: false,
+      code: 'NOT_FOUND',
+      error: 'Path not found',
+      suggestions: [],
+      opId: '1',
+      kind: OP_KIND.READ_FILE,
+    })
+
+    await loggingMw(makeCtx(), op, fakeNext)
+    expect((logs[1]! as LogEntryEnd).status).toBe('error')
+  })
+
+  it('should derive error status when next() throws', async () => {
+    const logs: LogEntry[] = []
+    const loggingMw = createLoggingMiddleware({ log: entry => logs.push(entry) })
+    const op: Op = { kind: OP_KIND.READ_FILE, id: '1', path: '/f.txt' } as Op
+    const throwingNext = async (): Promise<Result<unknown, unknown>> => {
+      throw new Error('boom')
+    }
+
+    await expect(loggingMw(makeCtx(), op, throwingNext)).rejects.toThrow('boom')
+    expect((logs[1]! as LogEntryEnd).status).toBe('error')
   })
 
   it('should emit end event even when next() throws', async () => {

@@ -1,7 +1,7 @@
 export { compose } from './compose.ts'
 export type { Middleware } from './compose.ts'
 export { createLoggingMiddleware } from './logging.ts'
-export type { LogEntry, LogEntryEnd, LogEntryStart, LoggingOptions } from './logging.ts'
+export type { LogEntry, LogEntryEnd, LogEntryStart, LoggingOptions, OpStatus } from './logging.ts'
 export { createPolicyMiddleware } from './policy.ts'
 export type { PolicyOptions } from './policy.ts'
 export { createQuotaMiddleware } from './quota.ts'
