@@ -7,9 +7,13 @@ import { buildEnvironmentPrompt, getSystemContext } from '../system'
 const BASE_DESCRIPTION = `Run a command on the host. Use only when the file tools cannot do the job (scripts, builds, system queries).
 
 MUST:
-- SPLIT THE INVOCATION: "command" is the executable name only; ALL arguments go into "args". The VFS spawns directly (no shell) — a full command line fails.
+- SPLIT THE INVOCATION: "command" is the command/action name only — an executable like "node"/"git", or a Windows builtin like "dir"/"start"; ALL arguments go into "args".
   ✓ { "command": "node", "args": ["-e", "console.log(1)"] }
+  ✓ { "command": "dir", "args": ["C:\\\\Users\\\\you"] }
   ✗ { "command": "node -e console.log(1)" }
+- The VFS picks the executor: resolvable executables spawn directly (no shell); Windows builtins with no standalone executable (dir/start/del/...) are dispatched through cmd automatically. NEVER write "cmd" or "cmd /c" yourself.
+- ARGUMENTS ARE PLAIN VALUES: they must not contain cmd shell metacharacters (& | < > ^) — builtin dispatch goes through cmd, where those would be interpreted as chaining/redirection. Pipes, redirection and command chaining are not supported; rework such needs with the file tools (read_file / write_file / edit_file / delete_file / mkdir).
+- STARTING A GUI APP (Windows): { "command": "start", "args": ["", "C:\\\\path\\\\to\\\\app.exe"] } — the first empty arg is the cmd window-title placeholder and must stay. "start" produces no output and does not wait for the app; after starting, verify the process with { "command": "tasklist", "args": ["/FI", "IMAGENAME eq app.exe"] } before reporting success.
 - ENCODING: modern tools (node, git) emit UTF-8; Windows legacy tools (cmd, powershell) emit ANSI (e.g. GBK on zh-CN) — decoded automatically (UTF-8 first). If still garbled, use node (if allowed) or set "outputEncoding".
 - ${PATH_HINT}
 - ${ENV_HINT}
@@ -22,11 +26,12 @@ Output:
 Safety:
 - Destructive — use with care.
 - Default-deny: unlisted commands are rejected — rework the command or report the failure, don't retry.
+- FILE OPERATIONS GO THROUGH THE FILE TOOLS: read_file / write_file / edit_file / delete_file enforce the policy deny-list; execute's file builtins (type / del / copy / move) do NOT. Prefer the file tools so policy-protected paths stay protected.
 - If writing files, declare them in "affectedPaths".`
 
 const EXECUTE_SCHEMA = z.object({
-  command: z.string().describe('Executable name only (e.g. "node", "git", "powershell"). Do NOT put arguments here — put them in "args".'),
-  args: z.array(z.string()).optional().describe('Arguments passed to the executable, one per array element (e.g. ["-c", "console.log(1)"] or ["/c", "dir"]).'),
+  command: z.string().describe('Command/action name only — an executable name (e.g. "node", "git") or a Windows builtin (e.g. "dir", "start"). Do NOT put arguments here — put them in "args".'),
+  args: z.array(z.string()).optional().describe('Arguments, one per array element (e.g. ["-e", "console.log(1)"]). Plain values only — no cmd shell metacharacters (& | < > ^).'),
   cwd: z.string().default('/').describe('Working directory — "/" is the sandbox root; relative paths resolve under rootDir.'),
   env: z.record(z.string(), z.string()).optional().describe('Extra env vars merged over the inherited host env (the VFS may strip configured blocklisted vars — exact names or patterns).'),
   timeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds.'),

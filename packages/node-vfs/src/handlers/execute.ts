@@ -20,6 +20,7 @@
  */
 
 import type { StorageBackend } from '../backend/storage.ts'
+import type { ErrSpec } from '../errors.ts'
 import type {
   ExecuteAllowItem,
   ExecuteAllowList,
@@ -123,13 +124,29 @@ export async function handleExecute(
   const guard = buildExecuteGuard(ctx.executeConfig?.allowCommands)
   const check = guard(op.command)
   if (!check.allowed) {
-    const suggestion = check.reason === 'allowList'
-      ? 'The command is not in the allow-list — add it to createVFS({ execute: { allowCommands: [...] } }) to permit it.'
-      : 'execute is disabled by default — enable it via createVFS({ execute: { allowCommands: [...] } }) with an allow-list (command names or regexes).'
-    return err(op.id, op.kind, ERR.PERMISSION_DENIED(`execute "${op.command}"`), {
+    // Guard rejection — the denied subject is the *command*, not a path, so
+    // the generic ERR.PERMISSION_DENIED (which speaks about paths) would
+    // mislead. Build a command-specific spec whose suggestions are executable
+    // by the LLM: it cannot modify the VFS configuration, so guidance must be
+    // "rework / use file tools / report to the user" — never "change the
+    // allow-list". The allow-list itself is intentionally not rendered (it is
+    // deployment config, not LLM-facing knowledge).
+    const deniedSpec: ErrSpec = {
+      code: 'PERMISSION_DENIED',
+      error: `Command not allowed: ${op.command}`,
+      suggestions: check.reason === 'allowList'
+        ? [
+            `Rework the command to use an allowed executable, or use the file tools (read_file / write_file / edit_file / delete_file / mkdir / ls / glob / grep) where they can do the job`,
+            `The command is blocked by the allow-list — do NOT try to bypass this restriction; if the task cannot be done with allowed commands, report the limitation to the user`,
+          ]
+        : [
+            `execute is disabled (default-deny) — rework the task using the file tools (read_file / write_file / edit_file / delete_file / mkdir / ls / glob / grep)`,
+            `If the task cannot be done without execute, report the limitation to the user — do NOT try to bypass this restriction`,
+          ],
+    }
+    return err(op.id, op.kind, deniedSpec, {
       reason: check.reason,
       detail: check.detail,
-      suggestion,
     })
   }
   const sandbox = backend as StorageBackend & { execute: (config: ExecuteConfig) => Promise<ExecuteReceipt> }
@@ -194,6 +211,9 @@ export async function handleExecute(
     }
     if (code === 'INVALID_PATH') {
       return err(op.id, op.kind, ERR.INVALID_PATH(cwd || '<empty>', detail ?? 'invalid path'))
+    }
+    if (code === 'INVALID_ARGUMENT') {
+      return err(op.id, op.kind, ERR.INVALID_ARGUMENT(detail ?? 'invalid argument'))
     }
     // Spawn failure (executable not found). Must not leak into the file-op
     // mapping (vfs.ts maps ENOENT → NOT_FOUND), which would misreport a

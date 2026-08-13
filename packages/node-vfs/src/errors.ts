@@ -257,6 +257,22 @@ export const ERR = {
       `Retry the operation; if it persists, report this to the user`,
     ],
   }),
+  /**
+   * An execute argument was rejected because it contains a Windows cmd shell
+   * metacharacter. Builtin commands (dir/start/echo/...) have no standalone
+   * executable, so the backend dispatches them through `cmd /c`; metacharacters
+   * there would be interpreted as command chaining/redirection. The error
+   * message itself carries the offending argument — this spec only shapes the
+   * LLM-actionable suggestions.
+   */
+  INVALID_ARGUMENT: (reason: string): ErrSpec => ({
+    code: 'INVALID_ARGUMENT',
+    error: `Invalid argument: ${reason}`,
+    suggestions: [
+      `Arguments must be plain values — on Windows, cmd builtin commands run via "cmd /c" and shell metacharacters (& | < > ^) would be interpreted, so they are rejected`,
+      `Rework the argument: file operations belong to the file tools (ls / read_file / write_file / edit_file / delete_file / mkdir); pipes, redirection and command chaining are not supported in execute`,
+    ],
+  }),
 } as const
 
 /**

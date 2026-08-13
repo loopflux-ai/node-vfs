@@ -61,6 +61,79 @@ function assertInsideRoot(physical: string, root: string): void {
   throw new FilesystemBackendError('PATH_TRAVERSAL', `Path escapes sandbox root: ${physical}`)
 }
 
+/** Windows executable extensions, from PATHEXT (with a default when unset). */
+function windowsExecutableExtensions(): string[] {
+  return (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD')
+    .split(';')
+    .map(e => e.trim())
+    .filter(Boolean)
+}
+
+/**
+ * True when `command` resolves to an executable the OS can spawn directly
+ * (absolute path, current directory, or on PATH). Windows only — POSIX
+ * commands always go straight to execa. Bare names with no matching
+ * executable (cmd builtins like dir/start/del) return false so execute()
+ * dispatches them through `cmd /d /s /c`.
+ */
+async function isWindowsExecutable(command: string): Promise<boolean> {
+  const hasExtension = /\.(?:com|exe|bat|cmd)$/i.test(command)
+  const extensions = hasExtension ? [''] : windowsExecutableExtensions()
+  const candidates: string[] = []
+  if (/[/\\:]/.test(command)) {
+    // Path-shaped command: probe it directly (plus PATHEXT variants).
+    for (const ext of extensions)
+      candidates.push(hasExtension ? command : command + ext)
+  }
+  else {
+    // Bare name: probe the current directory (cmd semantics) then PATH.
+    const dirs = ['.', ...(process.env.PATH ?? '').split(';').filter(Boolean)]
+    for (const dir of dirs) {
+      for (const ext of extensions)
+        candidates.push(join(dir, command + ext))
+    }
+  }
+  for (const candidate of candidates) {
+    try {
+      await fsp.access(candidate)
+      // .bat/.cmd scripts cannot be spawned directly by Node (they need the
+      // cmd interpreter) — treat them as builtins so execute() dispatches via
+      // `cmd /c`. This also catches a bare name like `setup` that only exists
+      // as `setup.bat` on PATH.
+      return !/\.(?:bat|cmd)$/i.test(candidate)
+    }
+    catch {
+      // keep probing
+    }
+  }
+  return false
+}
+
+/**
+ * Reject command/arguments containing cmd metacharacters when a builtin is
+ * dispatched through `cmd /c`: `& | < > ^` would be interpreted as
+ * chaining/redirection. The command string itself is guarded too — it is
+ * reassembled into `cmd /c <command> <args>`, so an unquoted metacharacter in
+ * it would chain a second command even when the args are clean. Quoting (`"`)
+ * and `%`-expansion stay allowed — with chaining/redirection blocked they
+ * cannot form a second command. This is the closed-form guard for the cmd
+ * dispatch path (exe commands spawn shell-free and need no guard).
+ */
+function assertNoCmdMetaChars(command: string, args: string[]): void {
+  const meta = /[&|<>^]/
+  const reject = (label: string, value: string): void => {
+    if (meta.test(value)) {
+      throw new FilesystemBackendError(
+        'INVALID_ARGUMENT',
+        `${label} contains a cmd shell metacharacter (one of & | < > ^) that would be interpreted: ${JSON.stringify(value)}`,
+      )
+    }
+  }
+  reject('Command', command)
+  for (const arg of args)
+    reject('Argument', arg)
+}
+
 /**
  * Resolve a VFS path to a physical path.
  *
@@ -368,7 +441,18 @@ export class FilesystemBackend implements StorageBackend {
     const safeEnv = buildChildEnv(process.env, config.env, config.envBlocklist)
     const startTime = Date.now()
     try {
-      const result = await execa(config.command, config.args ?? [], {
+      // Executable resolution (Windows): the `command` field is an *action
+      // name* — it may name a cmd builtin (dir/start/del/...) that has no
+      // standalone executable. When nothing resolvable is found on PATH, the
+      // builtin is dispatched through `cmd /d /s /c` with the command string
+      // assembled here (not by the caller); such arguments are guarded against
+      // cmd metacharacters. On POSIX every command spawns directly, shell-free.
+      const command = config.command
+      const args = config.args ?? []
+      const viaCmd = process.platform === 'win32' && !(await isWindowsExecutable(command))
+      if (viaCmd)
+        assertNoCmdMetaChars(command, args)
+      const result = await execa(viaCmd ? 'cmd' : command, viaCmd ? ['/d', '/s', '/c', command, ...args] : args, {
         cwd,
         env: safeEnv,
         timeout: config.timeoutMs,
@@ -468,7 +552,7 @@ export class FilesystemBackend implements StorageBackend {
     const physical = await resolve(path, this.root, this.virtualMode)
     // Stat first: recursive mkdir is a no-op on existing dirs, so we cannot
     // tell "created" from "already exists" afterwards.
-    let existing: import('node:fs').Stats | null = null
+    let existing: Stats | null = null
     try {
       existing = await fsp.stat(physical)
     }
