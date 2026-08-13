@@ -25,27 +25,18 @@ describe('toGoogleTools', () => {
     expect(names).toContain('execute')
   })
 
-  it('should apply prefix to tool names', () => {
-    const tools = toGoogleTools(vfs, { prefix: 'vfs_' })
-    expect(tools.every(t => t.name.startsWith('vfs_'))).toBe(true)
-    expect(tools[0]?.name).toBe('vfs_read_file')
-  })
+  it('should support prefix and filter options', () => {
+    const prefixed = toGoogleTools(vfs, { prefix: 'vfs_' })
+    expect(prefixed.every(t => t.name.startsWith('vfs_'))).toBe(true)
+    expect(prefixed[0]?.name).toBe('vfs_read_file')
 
-  it('should filter tools', () => {
-    const tools = toGoogleTools(vfs, {
-      filter: name => name !== 'execute',
-    })
-    expect(tools).toHaveLength(8)
-    expect(tools.map(t => t.name)).not.toContain('execute')
-  })
+    const filtered = toGoogleTools(vfs, { filter: name => name !== 'execute' })
+    expect(filtered).toHaveLength(8)
+    expect(filtered.map(t => t.name)).not.toContain('execute')
 
-  it('should combine prefix and filter', () => {
-    const tools = toGoogleTools(vfs, {
-      prefix: 'fs_',
-      filter: name => name === 'read_file',
-    })
-    expect(tools).toHaveLength(1)
-    expect(tools[0]?.name).toBe('fs_read_file')
+    const combined = toGoogleTools(vfs, { prefix: 'fs_', filter: name => name === 'read_file' })
+    expect(combined).toHaveLength(1)
+    expect(combined[0]?.name).toBe('fs_read_file')
   })
 
   it('should include description in tools', () => {

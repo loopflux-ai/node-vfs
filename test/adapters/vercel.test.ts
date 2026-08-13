@@ -24,27 +24,18 @@ describe('toVercelTools', () => {
     expect(tools).toHaveProperty('execute')
   })
 
-  it('should apply prefix to tool names', () => {
-    const tools = toVercelTools(vfs, { prefix: 'vfs_' })
-    expect(Object.keys(tools).every(k => k.startsWith('vfs_'))).toBe(true)
-    expect(Object.keys(tools)[0]).toBe('vfs_read_file')
-  })
+  it('should support prefix and filter options', () => {
+    const prefixed = toVercelTools(vfs, { prefix: 'vfs_' })
+    expect(Object.keys(prefixed).every(k => k.startsWith('vfs_'))).toBe(true)
+    expect(Object.keys(prefixed)[0]).toBe('vfs_read_file')
 
-  it('should filter tools', () => {
-    const tools = toVercelTools(vfs, {
-      filter: name => name !== 'execute',
-    })
-    expect(Object.keys(tools)).toHaveLength(8)
-    expect(Object.keys(tools)).not.toContain('execute')
-  })
+    const filtered = toVercelTools(vfs, { filter: name => name !== 'execute' })
+    expect(Object.keys(filtered)).toHaveLength(8)
+    expect(Object.keys(filtered)).not.toContain('execute')
 
-  it('should combine prefix and filter', () => {
-    const tools = toVercelTools(vfs, {
-      prefix: 'fs_',
-      filter: name => name === 'read_file',
-    })
-    expect(Object.keys(tools)).toHaveLength(1)
-    expect(tools).toHaveProperty('fs_read_file')
+    const combined = toVercelTools(vfs, { prefix: 'fs_', filter: name => name === 'read_file' })
+    expect(Object.keys(combined)).toHaveLength(1)
+    expect(combined).toHaveProperty('fs_read_file')
   })
 
   it('should return array when outputFormat is array', () => {
@@ -74,20 +65,17 @@ describe('toVercelTools', () => {
     ).rejects.toThrow('read_file failed: NOT_FOUND')
   })
 
-  it('should expose description and parameters metadata', () => {
-    const tools = toVercelTools(vfs, { filter: n => n === 'read_file' })
-    const readFile = tools.read_file
+  it('should expose description and parameters metadata in both output formats', () => {
+    const readFile = toVercelTools(vfs, { filter: n => n === 'read_file' }).read_file
     expect(readFile).toHaveProperty('description')
     expect(typeof readFile.description).toBe('string')
     expect(readFile.description.length).toBeGreaterThan(0)
     expect(readFile).toHaveProperty('parameters')
     expect(readFile.parameters).toBeDefined()
-  })
 
-  it('should expose metadata for array output format', () => {
-    const tools = toVercelTools(vfs, { outputFormat: 'array' })
-    expect(tools).toHaveLength(9)
-    for (const t of tools) {
+    const arrayTools = toVercelTools(vfs, { outputFormat: 'array' })
+    expect(arrayTools).toHaveLength(9)
+    for (const t of arrayTools) {
       expect(t).toHaveProperty('description')
       expect(typeof t.description).toBe('string')
       expect(t.description.length).toBeGreaterThan(0)

@@ -402,88 +402,77 @@ describe('logging middleware', () => {
     expect(end.execute?.exitCode).toBe(3)
   })
 
-  it('should derive success status for a successful execute', async () => {
+  it.each([
+    {
+      name: 'success for a successful execute',
+      op: { kind: OP_KIND.EXECUTE, id: '1', command: 'cmd' } as Op,
+      fakeNext: async (): Promise<Result<unknown, unknown>> => ({
+        ok: true,
+        data: { exitCode: 0 },
+        meta: { stdoutBytes: 0, exitCode: 0 },
+        tokens: 0,
+      }),
+      expected: 'success',
+    },
+    {
+      name: 'failed when execute exits non-zero',
+      op: { kind: OP_KIND.EXECUTE, id: '1', command: 'cmd' } as Op,
+      fakeNext: async (): Promise<Result<unknown, unknown>> => ({
+        ok: true,
+        data: { exitCode: 3 },
+        meta: { stdoutBytes: 42, exitCode: 3 },
+        tokens: 0,
+      }),
+      expected: 'failed',
+    },
+    {
+      name: 'cancelled from ABORTED errors',
+      op: { kind: OP_KIND.READ_FILE, id: '1', path: '/f.txt' } as Op,
+      fakeNext: async (): Promise<Result<unknown, unknown>> => ({
+        ok: false,
+        code: 'ABORTED',
+        error: 'Operation aborted by caller',
+        suggestions: [],
+        opId: '1',
+        kind: OP_KIND.READ_FILE,
+      }),
+      expected: 'cancelled',
+    },
+    {
+      name: 'rejected from PERMISSION_DENIED errors',
+      op: { kind: OP_KIND.READ_FILE, id: '1', path: '/f.txt' } as Op,
+      fakeNext: async (): Promise<Result<unknown, unknown>> => ({
+        ok: false,
+        code: 'PERMISSION_DENIED',
+        error: 'Permission denied',
+        suggestions: [],
+        opId: '1',
+        kind: OP_KIND.READ_FILE,
+      }),
+      expected: 'rejected',
+    },
+    {
+      name: 'error for other failures',
+      op: { kind: OP_KIND.READ_FILE, id: '1', path: '/noexist' } as Op,
+      fakeNext: async (): Promise<Result<unknown, unknown>> => ({
+        ok: false,
+        code: 'NOT_FOUND',
+        error: 'Path not found',
+        suggestions: [],
+        opId: '1',
+        kind: OP_KIND.READ_FILE,
+      }),
+      expected: 'error',
+    },
+  ])('should derive $name status', async ({ op, fakeNext, expected }) => {
     const logs: LogEntry[] = []
     const loggingMw = createLoggingMiddleware({ log: entry => logs.push(entry) })
-    const op: Op = { kind: OP_KIND.EXECUTE, id: '1', command: 'cmd' } as Op
-    const fakeNext = async (): Promise<Result<unknown, unknown>> => ({
-      ok: true,
-      data: { exitCode: 0 },
-      meta: { stdoutBytes: 0, exitCode: 0 },
-      tokens: 0,
-    })
 
     await loggingMw(makeCtx(), op, fakeNext)
-    expect((logs[1]! as LogEntryEnd).status).toBe('success')
+    expect((logs[1]! as LogEntryEnd).status).toBe(expected)
   })
 
-  it('should derive failed status when execute exits non-zero', async () => {
-    const logs: LogEntry[] = []
-    const loggingMw = createLoggingMiddleware({ log: entry => logs.push(entry) })
-    const op: Op = { kind: OP_KIND.EXECUTE, id: '1', command: 'cmd' } as Op
-    const fakeNext = async (): Promise<Result<unknown, unknown>> => ({
-      ok: true,
-      data: { exitCode: 3 },
-      meta: { stdoutBytes: 42, exitCode: 3 },
-      tokens: 0,
-    })
-
-    await loggingMw(makeCtx(), op, fakeNext)
-    expect((logs[1]! as LogEntryEnd).status).toBe('failed')
-  })
-
-  it('should derive cancelled status from ABORTED errors', async () => {
-    const logs: LogEntry[] = []
-    const loggingMw = createLoggingMiddleware({ log: entry => logs.push(entry) })
-    const op: Op = { kind: OP_KIND.READ_FILE, id: '1', path: '/f.txt' } as Op
-    const fakeNext = async (): Promise<Result<unknown, unknown>> => ({
-      ok: false,
-      code: 'ABORTED',
-      error: 'Operation aborted by caller',
-      suggestions: [],
-      opId: '1',
-      kind: OP_KIND.READ_FILE,
-    })
-
-    await loggingMw(makeCtx(), op, fakeNext)
-    expect((logs[1]! as LogEntryEnd).status).toBe('cancelled')
-  })
-
-  it('should derive rejected status from PERMISSION_DENIED errors', async () => {
-    const logs: LogEntry[] = []
-    const loggingMw = createLoggingMiddleware({ log: entry => logs.push(entry) })
-    const op: Op = { kind: OP_KIND.READ_FILE, id: '1', path: '/f.txt' } as Op
-    const fakeNext = async (): Promise<Result<unknown, unknown>> => ({
-      ok: false,
-      code: 'PERMISSION_DENIED',
-      error: 'Permission denied',
-      suggestions: [],
-      opId: '1',
-      kind: OP_KIND.READ_FILE,
-    })
-
-    await loggingMw(makeCtx(), op, fakeNext)
-    expect((logs[1]! as LogEntryEnd).status).toBe('rejected')
-  })
-
-  it('should derive error status for other failures', async () => {
-    const logs: LogEntry[] = []
-    const loggingMw = createLoggingMiddleware({ log: entry => logs.push(entry) })
-    const op: Op = { kind: OP_KIND.READ_FILE, id: '1', path: '/noexist' } as Op
-    const fakeNext = async (): Promise<Result<unknown, unknown>> => ({
-      ok: false,
-      code: 'NOT_FOUND',
-      error: 'Path not found',
-      suggestions: [],
-      opId: '1',
-      kind: OP_KIND.READ_FILE,
-    })
-
-    await loggingMw(makeCtx(), op, fakeNext)
-    expect((logs[1]! as LogEntryEnd).status).toBe('error')
-  })
-
-  it('should derive error status when next() throws', async () => {
+  it('should emit an end event with error status when next() throws', async () => {
     const logs: LogEntry[] = []
     const loggingMw = createLoggingMiddleware({ log: entry => logs.push(entry) })
     const op: Op = { kind: OP_KIND.READ_FILE, id: '1', path: '/f.txt' } as Op
@@ -492,24 +481,13 @@ describe('logging middleware', () => {
     }
 
     await expect(loggingMw(makeCtx(), op, throwingNext)).rejects.toThrow('boom')
-    expect((logs[1]! as LogEntryEnd).status).toBe('error')
-  })
-
-  it('should emit end event even when next() throws', async () => {
-    const logs: LogEntry[] = []
-    const loggingMw = createLoggingMiddleware({ log: entry => logs.push(entry) })
-    const op: Op = { kind: OP_KIND.READ_FILE, id: '1', path: '/f.txt' } as Op
-    const throwingNext = async (): Promise<Result<unknown, unknown>> => {
-      throw new Error('unexpected boom')
-    }
-
-    await expect(loggingMw(makeCtx(), op, throwingNext)).rejects.toThrow('unexpected boom')
     expect(logs).toHaveLength(2)
     expect(logs[0]!.phase).toBe('start')
     expect(logs[1]!.phase).toBe('end')
     const end = logs[1]! as LogEntryEnd
     expect(end.ok).toBe(false)
     expect(end.code).toBeUndefined()
+    expect(end.status).toBe('error')
     expect(end.durationMs).toBeGreaterThanOrEqual(0)
   })
 })

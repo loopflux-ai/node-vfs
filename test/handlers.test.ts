@@ -761,6 +761,41 @@ describe('handleExecute', () => {
     expect(expectErrResult(result).code).toBe('UNSUPPORTED')
   })
 
+  it('should reject commands outside the allow-list with LLM-actionable suggestions', async () => {
+    const fakeBackend = {
+      execute: async () => {
+        throw new Error('should not be called')
+      },
+    }
+    const result = await handleExecute(fakeBackend as never, {
+      kind: OP_KIND.EXECUTE,
+      id: '1',
+      command: 'del',
+    }, makeCtx({ executeConfig: { allowCommands: ['node'] } }))
+    const r = expectErrResult(result)
+    expect(r.code).toBe('PERMISSION_DENIED')
+    expect(r.error).toContain('Command not allowed')
+    expect(r.suggestions.join(' ')).toContain('read_file')
+    expect(r.suggestions.join(' ')).toContain('report the limitation to the user')
+  })
+
+  it('should reject every command when execute is disabled (default-deny)', async () => {
+    const fakeBackend = {
+      execute: async () => {
+        throw new Error('should not be called')
+      },
+    }
+    const result = await handleExecute(fakeBackend as never, {
+      kind: OP_KIND.EXECUTE,
+      id: '1',
+      command: 'node',
+    }, makeCtx())
+    const r = expectErrResult(result)
+    expect(r.code).toBe('PERMISSION_DENIED')
+    expect(r.error).toContain('Command not allowed')
+    expect(r.suggestions.join(' ')).toContain('default-deny')
+  })
+
   it('should clamp per-op overrides to the instance limits', async () => {
     let received: ExecuteConfig | undefined
     const fakeBackend = {

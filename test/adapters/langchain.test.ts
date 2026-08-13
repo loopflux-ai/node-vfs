@@ -25,27 +25,18 @@ describe('toLangChainTools', () => {
     expect(names).toContain('execute')
   })
 
-  it('should apply prefix to tool names', () => {
-    const tools = toLangChainTools(vfs, { prefix: 'vfs_' })
-    expect(tools.every(t => t.name.startsWith('vfs_'))).toBe(true)
-    expect(tools[0]!.name).toBe('vfs_read_file')
-  })
+  it('should support prefix and filter options', () => {
+    const prefixed = toLangChainTools(vfs, { prefix: 'vfs_' })
+    expect(prefixed.every(t => t.name.startsWith('vfs_'))).toBe(true)
+    expect(prefixed[0]!.name).toBe('vfs_read_file')
 
-  it('should filter tools', () => {
-    const tools = toLangChainTools(vfs, {
-      filter: name => name !== 'execute',
-    })
-    expect(tools.length).toBe(8)
-    expect(tools.map(t => t.name)).not.toContain('execute')
-  })
+    const filtered = toLangChainTools(vfs, { filter: name => name !== 'execute' })
+    expect(filtered.length).toBe(8)
+    expect(filtered.map(t => t.name)).not.toContain('execute')
 
-  it('should combine prefix and filter', () => {
-    const tools = toLangChainTools(vfs, {
-      prefix: 'fs_',
-      filter: name => name === 'read_file',
-    })
-    expect(tools.length).toBe(1)
-    expect(tools[0]!.name).toBe('fs_read_file')
+    const combined = toLangChainTools(vfs, { prefix: 'fs_', filter: name => name === 'read_file' })
+    expect(combined.length).toBe(1)
+    expect(combined[0]!.name).toBe('fs_read_file')
   })
 
   it('should execute adapted read_file tool', async () => {

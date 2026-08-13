@@ -126,5 +126,21 @@ describe('executeTool', () => {
       const out = await toolkit.executeTool(executeTool, { command: 'node', args: ['silent.js'] })
       expect(out).toContain('[Command produced no output')
     })
+
+    it.skipIf(process.platform !== 'win32')('should run a cmd builtin by action name', async () => {
+      // The allow-list names the action ("echo"), not the interpreter. The
+      // VFS dispatches the builtin through cmd itself when no executable
+      // resolves; Git Bash's /usr/bin/echo.exe makes the direct-spawn path
+      // equally valid — both must return the output.
+      const vfs2 = createVFS({ backend: new FilesystemBackend({ rootDir: root }), execute: { allowCommands: ['echo'] } })
+      const tk2 = new VFSToolkit(vfs2)
+      try {
+        const out = await tk2.executeTool(executeTool, { command: 'echo', args: ['tool-builtin-ok'] })
+        expect(out).toContain('tool-builtin-ok')
+      }
+      finally {
+        await vfs2.dispose()
+      }
+    })
   })
 })

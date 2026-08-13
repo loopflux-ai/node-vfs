@@ -489,6 +489,72 @@ describe('filesystemBackend', () => {
       })
       expect(result.stdout).toBe('中文')
     })
+
+    it.skipIf(process.platform !== 'win32')('should dispatch cmd builtins by action name without "cmd"', async () => {
+      // "echo" may or may not resolve to an executable (Git Bash ships
+      // /usr/bin/echo.exe) — both paths must work: direct spawn, or cmd
+      // builtin dispatch assembled by the backend.
+      const result = await backend.execute({
+        command: 'echo',
+        args: ['vfs-builtin-ok'],
+        cwd: '/',
+        env: {},
+        timeoutMs: 5000,
+        maxOutputBytes: 1024 * 1024,
+        signal: new AbortController().signal,
+      })
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout).toContain('vfs-builtin-ok')
+    })
+
+    it.skipIf(process.platform !== 'win32')('should reject args with cmd metacharacters on builtin dispatch', async () => {
+      // `foo a & b` would chain under `cmd /c` — the backend rejects it before
+      // spawning, regardless of whether `foo` exists. Use a name that cannot
+      // resolve to an executable so the guard is guaranteed to run.
+      await expect(backend.execute({
+        command: '__node_vfs_no_such_builtin__',
+        args: ['a & b'],
+        cwd: '/',
+        env: {},
+        timeoutMs: 5000,
+        maxOutputBytes: 1024 * 1024,
+        signal: new AbortController().signal,
+      })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' })
+    })
+
+    it.skipIf(process.platform !== 'win32')('should reject a command string carrying cmd metacharacters', async () => {
+      // The command itself is reassembled into `cmd /c <command> <args>` — an
+      // unquoted `&` would chain a second command even with clean args. The
+      // guard must reject it before spawn, regardless of whether the command
+      // resolves (use a name that cannot resolve to force the cmd path).
+      await expect(backend.execute({
+        command: '__node_vfs_dir__ & echo pwned',
+        args: [],
+        cwd: '/',
+        env: {},
+        timeoutMs: 5000,
+        maxOutputBytes: 1024 * 1024,
+        signal: new AbortController().signal,
+      })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' })
+    })
+
+    it.skipIf(process.platform !== 'win32')('should run a .bat script through cmd', async () => {
+      // Node cannot spawn .bat/.cmd directly — the backend must dispatch them
+      // via `cmd /c`. `x.bat` resolves to nothing on PATH, so the cmd path is
+      // taken and cmd runs it inside the backend cwd (the sandbox root).
+      await backend.write('/x.bat', new TextEncoder().encode('@echo off\r\n echo vfs-bat-ok\r\n'), OVERWRITE)
+      const result = await backend.execute({
+        command: 'x.bat',
+        args: [],
+        cwd: '/',
+        env: {},
+        timeoutMs: 5000,
+        maxOutputBytes: 1024 * 1024,
+        signal: new AbortController().signal,
+      })
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout).toContain('vfs-bat-ok')
+    })
   })
 
   describe('decodeExecOutput', () => {
