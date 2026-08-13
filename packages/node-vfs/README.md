@@ -157,6 +157,8 @@ console.log(r.data.stdout, r.data.exitCode, r.data.durationMs)
 ```
 
 - **Default-deny**: every `execute` op is rejected unless `createVFS({ execute: { allowCommands: [...] } })` provides an allow-list of command names or `RegExp`s.
+- **`command` is an action name** — an executable like `node`/`git`, or on Windows a cmd builtin like `dir`/`start`/`del`. The backend picks the executor: resolvable executables spawn directly (no shell); builtins with no standalone executable are dispatched through `cmd /d /s /c` with the command string assembled by the backend (the caller never writes `cmd`). `.bat`/`.cmd` scripts go through `cmd` too.
+- **Arguments are plain values**: on Windows, builtin dispatch runs through `cmd`, where `& | < > ^` would be interpreted as chaining/redirection — such values are rejected with `INVALID_ARGUMENT` (both in `command` and in `args`). Executable commands spawn shell-free and need no such guard.
 - `scope` (`'readonly' | 'readwrite'`) and `affectedPaths` are declarative audit fields, validated against policy — real enforcement is the allow-list + policy deny-list.
 - `env` inherits the full host `process.env` by default. Strip host vars you don't want to leak via `execute: { envBlocklist: [...] }` — exact names (case-insensitive) or RegExp patterns; per-op `env` overrides still apply.
 - An op-object overload is available: `vfs.execute({ kind: OP_KIND.EXECUTE, command, args })`.
@@ -321,6 +323,7 @@ Stable contract surface — never rename. `ErrResult` carries `code`, `error`, a
 | `CAPACITY_EXCEEDED` | Quota middleware limit |
 | `INVALID_PATTERN` | Bad grep/glob pattern |
 | `EXEC_FAILED` / `COMMAND_NOT_FOUND` | Subprocess failures |
+| `INVALID_ARGUMENT` | cmd builtin dispatch: `& \| < > ^` in command/args would be interpreted |
 | `UNSUPPORTED` / `ABORTED` / `INTERNAL_ERROR` | Missing capability / cancellation / unexpected |
 
 ## Security Model
@@ -329,6 +332,7 @@ Stable contract surface — never rename. `ErrResult` carries `code`, `error`, a
 - **Path validation chain**: `validatePath` (facade) → policy deny (middleware) → `assertInsideRoot` + symlink realpath (backend) — defense in depth.
 - **Safe subprocess env**: the child inherits the full host `process.env` by default. Env hardening is caller-configured via `execute: { envBlocklist: [...] }` — list secrets/proxy vars you don't want to leak (case-insensitive matching). No implicit filtering.
 - **Resource caps**: file size, output bytes, timeout, edit size, batch item count, pattern length, grep results.
+- **Windows builtin dispatch is guarded**: commands that resolve to no standalone executable (cmd builtins, `.bat`/`.cmd`) run via `cmd /d /s /c`; the command string is assembled by the backend and command/argument values are rejected when they carry unquoted cmd metacharacters (`& | < > ^`), closing the chaining/redirection injection surface.
 - **Threat-model boundary**: the allow-list restricts the command *shape*, not arbitrary code (`node script.js`). For adversarial isolation, run in a container or sandboxed user.
 
 ## Toolkit

@@ -20,6 +20,7 @@ The following are in scope and **always welcome**:
 
 - Sandbox escape: path traversal, symlink escape, `rootDir` boundary bypass
 - Execute guard bypass: allow-list evasion, unsafe env leakage (`LD_PRELOAD`, `ComSpec`, etc.). The subprocess env inherits the full host env by default — `createVFS({ execute: { envBlocklist } })` is the caller's control for stripping sensitive/injection-prone vars.
+- Windows cmd dispatch injection: builtin commands (`dir`/`start`/`del`, `.bat`/`.cmd`) are dispatched through `cmd /d /s /c` with the command string assembled by the backend; values carrying unquoted cmd metacharacters (`& | < > ^`) must be rejected (`INVALID_ARGUMENT`) before spawn.
 - Policy/quota bypass: deny-list filtering gaps, quota accounting errors
 - Cache correctness leading to cross-tenant data exposure or stale permission states
 

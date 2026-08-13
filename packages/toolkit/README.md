@@ -50,7 +50,7 @@ interface VFSToolDefinition {
 | `grep` | Search file contents (plain substring or regex via `flags`) |
 | `ls` | List a directory's entries (paginated) |
 | `glob` | Find files by glob pattern (paginated) |
-| `execute` | Run a host command (respects the VFS allow-list) |
+| `execute` | Run a host command by action name (`node`/`dir`/`start`); the VFS picks the executor and respects the allow-list |
 
 All tools are exported individually (e.g. `readFileTool`) and collected in `ALL_TOOLS`.
 
@@ -86,7 +86,7 @@ Tool output is capped at `DEFAULT_MAX_OUTPUT_CHARS` (50 000 chars, ~12 500 token
 
 ### Platform context
 
-The `execute` tool announces the host environment (`Windows (win32, x64, cmd-compatible shell)` / POSIX) in its description so the agent can select commands appropriate to the host shell.
+The `execute` tool announces the host environment (`Windows (win32, x64, cmd-compatible shell)` / POSIX) in its description so the agent can select commands appropriate to the host shell. The description also teaches that `command` is an action name — the VFS spawns executables directly and auto-dispatches Windows builtins (dir/start/del, `.bat`/`.cmd`) through `cmd`, so the agent never writes `cmd /c` itself — and that args must be plain values (cmd metacharacters are rejected).
 
 ## Framework Adapters
 
